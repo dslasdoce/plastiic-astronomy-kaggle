@@ -133,11 +133,11 @@ def getMetaData():
     train_meta = pd.read_csv('training_set_metadata.csv')
     test_meta_data = pd.read_csv('test_set_metadata.csv')
     
-    train_meta.loc[train_meta['hostgal_specz'] == 0, 'is_galactic'] = 0
-    train_meta.loc[train_meta['hostgal_specz'] > 0, 'is_galactic'] = 1
-    
-    test_meta_data.loc[test_meta_data['hostgal_specz'] == 0, 'is_galactic'] = 0
-    test_meta_data.loc[test_meta_data['hostgal_specz'] > 0, 'is_galactic'] = 1
+#    train_meta.loc[train_meta['hostgal_specz'] == 0, 'is_galactic'] = 0
+#    train_meta.loc[train_meta['hostgal_specz'] > 0, 'is_galactic'] = 1
+#    
+#    test_meta_data.loc[test_meta_data['hostgal_specz'] == 0, 'is_galactic'] = 0
+#    test_meta_data.loc[test_meta_data['hostgal_specz'] > 0, 'is_galactic'] = 1
     
     #period merging to meta data if period is calculated as average
 #    train_periods = pd.read_csv('train_periods_saved.csv')
