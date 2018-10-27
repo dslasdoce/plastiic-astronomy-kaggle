@@ -1,0 +1,37 @@
+################
+base
+LightGBM: 1.3150828004500505
+XGBoost: 1.242652617670477
+Combined: 1.2571514464394495
+
+################
+with rate
+LightGBM: 1.2221535076379992
+XGBoost: 1.2377018649092486
+Combined: 1.201829208107102
+
+################
+aggs = {'mjd': ['min', 'max', 'size'],
+        'passband': ['min', 'max', 'mean', 'std'],
+        'flux': ['min', 'max', 'mean', 'median', 'std'],
+        'flux_err': ['min', 'max', 'mean', 'median', 'std'],
+        'detected': ['mean']} + rate
+        
+        
+###################
+with period
+LightGBM: 1.2148949483136215
+XGBoost: 1.2063738920002134
+Combined: 1.183345634085640
+
+###################
+#individual columns per passband, ave period
+LightGBM: 0.9691540180850556
+XGBoost: 1.0121602076454406
+Combined: 0.9580898487553698
+
+###################
+#individual columns per passband, period per passband
+LightGBM: 0.9637247944464595
+XGBoost: 1.0413743507725721
+Combined: 0.9645660198304054

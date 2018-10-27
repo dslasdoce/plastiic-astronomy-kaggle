@@ -1,0 +1,14 @@
+
+\.spyproject/
+
+*.csv
+
+model_multi\.png
+
+*.pyc
+
+auto_enc\.h5
+
+data_note\.pdf
+
+*.h5
