@@ -71,7 +71,7 @@ def passbandToCols(df):
                         data=[df.values])
     
 def getFullData(ts_data, meta_data):
-    aggs = {'mjd': ['min', 'max', 'size'],
+    aggs = {'mjd': ['size'],
             'flux': ['min', 'max', 'mean', 'median', 'std', 'size', 'skew'],
             'flux_err': ['min', 'max', 'mean', 'median', 'std', 'skew'],
             'detected': ['mean'],
@@ -89,12 +89,8 @@ def getFullData(ts_data, meta_data):
     full_data.columns = new_columns
     full_data = full_data.reset_index()
     
-#    full_data['mjd_length'] = full_data['mjd_max'] - full_data['mjd_min']
-    full_data = full_data.drop(['mjd_max', 'mjd_min'], axis=1)
-#    full_data['flux_per_mjd'] = (full_data['flux_max'] - full_data['flux_min'])\
-#                                /full_data['mjd_length']
-#    full_data['flux_err_per_mjd'] = (full_data['flux_err_max'] - full_data['flux_err_min'])\
-#                                /full_data['mjd_length']
+#    full_data = full_data.drop(['mjd_max', 'mjd_min'], axis=1)
+
     full_data['flux_standard_err']\
         = full_data['flux_mean']/np.sqrt(full_data['flux_size'])
     del full_data['flux_size']
@@ -115,14 +111,13 @@ def getFullData(ts_data, meta_data):
         on='object_id'
     )
     del full_data['distmod']#, full_data['hostgal_specz']
-
-    #period calculation if period is average per object_id
-#    period_df = ts_data.groupby(['object_id', 'passband'])\
-#                .apply(lcperiod).reset_index()\
-#                .groupby('object_id').mean().reset_index()
-#    full_data = full_data.merge(period_df, how='left', on='object_id')
-#    del full_data['passband']
-        
+    
+#     detected-based mjd length feature for each object id only
+    z = ts_data.loc[ts_data.detected==1].groupby('object_id')\
+            .apply(lambda df: pd.Series({'mjd_det': max(df.mjd) - min(df.mjd)}))\
+            .reset_index()
+    full_data = full_data.merge(z, how='left', on='object_id')
+#        
     train_features = [f for f in full_data.columns if f not in excluded_features]
 
 #    del agg_ts
