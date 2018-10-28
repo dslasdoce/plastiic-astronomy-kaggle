@@ -295,11 +295,11 @@ for i, (train_idx, cv_idx) in enumerate(folds):
         eval_metric=xgbMultiWeightedLoss,
         early_stopping_rounds=50,
     )
-#    imp_df = pd.DataFrame()
-#    imp_df['feature'] = train_features
-#    imp_df['gain'] = clf_xgb.feature_importances_(importance_type='gain')
-#    imp_df['fold'] = i + 1
-#    imp_xgb = pd.concat([imp_xgb, imp_df], axis=0, sort=False)
+    imp_df = pd.DataFrame()
+    imp_df['feature'] = train_features
+    imp_df['gain'] = clf_xgb.feature_importances_
+    imp_df['fold'] = i + 1
+    imp_xgb = pd.concat([imp_xgb, imp_df], axis=0, sort=False)
     
     print ("\n" + "*"*10 + "LightGBM" + "*"*10)
     clf_lgbm = lgbm.LGBMClassifier(**lgbm_params)
@@ -347,27 +347,32 @@ label_features_gal = ['class_' + str(cl) for cl in gal_classes]
 label_features_exgal = ['class_' + str(cl) for cl in exgal_classes]
 z.loc[train_full['hostgal_specz']==0, label_features_exgal] = 0
 z.loc[train_full['hostgal_specz']!=0, label_features_gal] = 0
-print("Manual Hostgal: {0}".format(multiWeightedLoss(train_full['target_id'],
-                                               z.values)))
-#import seaborn as sns
-#import matplotlib.pyplot as plt
-##mean barplot of importances
-##imp_xgb_mean = np.log1p(imp_xgb[['gain', 'feature']]\
-##                       .groupby('feature').mean())
-##imp_xgb_mean = imp_xgb_mean.reset_index()
-##fig = plt.figure(figsize=(8, 25))
-##sns.barplot(x='gain', y='feature',
-##            data=imp_xgb_mean.sort_values('gain', ascending=False))
-##fig.suptitle('XGB Mean Feature Importance', fontsize=16)
-##fig.tight_layout()
-#
-##imp_lgb_mean = np.log1p(imp_lgb[['gain', 'feature']])
-##imp_lgb_mean = imp_lgb_mean.reset_index()
-#fig = plt.figure(figsize=(8, 25))
-#sns.barplot(x='gain', y='feature',
-#            data=imp_lgb.sort_values('gain', ascending=False))
-#fig.suptitle('LGB Mean Feature Importance', fontsize=16)
-#fig.tight_layout()
+#print("Manual Hostgal: {0}".format(multiWeightedLoss(train_full['target_id'],
+#                                               z.values)))
+import seaborn as sns
+import matplotlib.pyplot as plt
+plt.ioff()
+#mean barplot of importances
+#imp_xgb_mean = np.log1p(imp_xgb[['gain', 'feature']]\
+#                       .groupby('feature').mean())
+#imp_xgb_mean = imp_xgb_mean.reset_index()
+fig, ax = plt.subplots(figsize=(8, 14))
+sns.barplot(x='gain', y='feature', ax=ax,
+            data=imp_xgb.sort_values('gain', ascending=False).head(50))
+#fig.suptitle('XGB Mean Feature Importance', fontsize=16)
+ax.set_yticklabels(ax.get_yticklabels(), fontsize=7)
+plt.tight_layout()
+plt.show(block=False)
+
+#imp_lgb_mean = np.log1p(imp_lgb[['gain', 'feature']])
+#imp_lgb_mean = imp_lgb_mean.reset_index()
+fig, ax = plt.subplots(figsize=(8, 14))
+sns.barplot(x='gain', y='feature',
+            data=imp_lgb.sort_values('gain', ascending=False).head(50))
+fig.suptitle('LGB Mean Feature Importance', fontsize=16)
+fig.tight_layout()
+plt.tight_layout()
+plt.show(block=False)
 
 
 ######################### #create submission file #############################
@@ -429,10 +434,10 @@ if do_prediction is True:
                 preds_xgb \
                     += clf_xgb.predict_proba(full_test[train_features]) / len(folds)
         preds_comb = 0.7*preds_lgb + 0.3*preds_xgb
-        # preds_99 = 0.1 gives 1.769
-    #    preds_99 = np.zeros(preds_lgb.shape[0])
-    #    for i in range(preds.shape[1]):
-    #        preds_99 *= (1 - preds[:, i])
+#         preds_99 = 0.1 gives 1.769
+#        preds_99 = np.zeros(preds_lgb.shape[0])
+#        for i in range(preds.shape[1]):
+#            preds_99 *= (1 - preds[:, i])
         
         #save periods
         if i_c == 0:
@@ -463,20 +468,20 @@ if do_prediction is True:
         
         if (i_c + 1) % 10 == 0:
             print('%15d done in %5.1f' % (chunks * (i_c + 1), (time.time() - start) / 60))
-    #
-    model = 'sfd_preds'
+
+    model = 'sfd_preds_comb'
     z = pd.read_csv(model + '.csv')
     
-#    preds_99 = np.ones(z.shape[0])
-#    no_99 = label_features.copy()
-#    no_99.remove('class_99')
-#    for i in range(z[no_99].values.shape[1]):
-#        preds_99 *= (1 - z[no_99].values[:, i])
-#    z['class_99'] = 0.14 * preds_99 / np.mean(preds_99)
+    preds_99 = np.ones(z.shape[0])
+    no_99 = label_features.copy()
+    no_99.remove('class_99')
+    for i in range(z[no_99].values.shape[1]):
+        preds_99 *= (1 - z[no_99].values[:, i])
+    z['class_99'] = 0.14 * preds_99 / np.mean(preds_99)
 
     cols = list(z.columns)
     cols.remove('object_id')
-    z['class_99'] = 1 - z[cols].max(axis=1)
+#    z['class_99'] = 1 - z[cols].max(axis=1)
     #z = z[['object_id'] + label_features]
     tech ='_99sc'
     z.to_csv(model + tech + '.csv', index=False)

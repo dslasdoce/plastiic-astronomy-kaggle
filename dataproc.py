@@ -11,8 +11,11 @@ import operator
 import numpy as np
 import gc
 #from keras.utils import Sequence
-from gatspy.periodic import LombScargleMultiband
+#from gatspy.periodic import LombScargleMultiband
 from astropy.stats import LombScargle
+import feets
+#import matplotlib.pyplot as plt
+#import seaborn as sns
 
 #class mapping from actual class to target_id
 target_map = {6: 0, 15:1, 16:2, 42:3, 52: 4, 53: 5, 62: 6, 64: 7,
@@ -37,7 +40,16 @@ def getDataParameters():
     
     return target_map, label_features, all_classes, all_class_weights
 
+fs = feets.FeatureSpace(only=['Autocor_length'])
+#    'Std','Amplitude','FluxPercentileRatioMid50',
+#                              'Autocor_length',
+#                              'CAR_sigma', 'Gskew', 'LinearTrend',
+#                              'MaxSlope', 'Meanvariance', 
+#                              'PercentDifferenceFluxPercentile',
+#                              'SmallKurtosis'
+
 def lcperiod(df_main):
+    df_main = df_main.sort_values('mjd')
     try:
         frequency, power = LombScargle(df_main['mjd'], df_main['flux'],
                                        dy=df_main['flux_err']).autopower(nyquist_factor=1)
@@ -46,8 +58,46 @@ def lcperiod(df_main):
     except ValueError:
         period = 0
         power = 0
-    period = pd.Series([period, power], index=['period', 'pow'])
+        
+#    features, values = fs.extract(time=sample['mjd'],
+#                              magnitude=sample['flux'],
+#                              error=sample['flux_err'])
+    
+    period = pd.Series([period, power], index=['period', 'power'])
+#    period = pd.Series([power], index=['power'])
     return period
+
+def lcFeatures(df_main):
+    df_main = df_main.sort_values('mjd')
+    try:
+        frequency, power = LombScargle(df_main['mjd'], df_main['flux'],
+                                       dy=df_main['flux_err'])\
+                           .autopower(nyquist_factor=1)
+        period = 1/frequency[np.argmax(power)]
+        power = power.mean()
+    except ValueError:
+        period = 0
+        power = 0
+        
+    features, values = fs.extract(time=df_main['mjd'],
+                              magnitude=df_main['flux'],
+                              error=df_main['flux_err'])
+    
+    features_ser = pd.Series([period, power], index=['period', 'power'])
+    features_ser = pd.concat([features_ser, pd.Series(values, index=features)])
+#    features_ser = pd.Series(values, index=features)
+    return features_ser
+
+def lcFeaturesEx(df_main):
+    df_main = df_main.sort_values('mjd')
+        
+    features, values = fs.extract(time=df_main['mjd'],
+                              magnitude=df_main['flux'],
+                              error=df_main['flux_err'])
+    
+    features_ser = pd.Series(values, index=features)
+#    features_ser = pd.Series(values, index=features)
+    return features_ser
 
 def lscargleTrans(df_main):
     try:
@@ -142,6 +192,8 @@ def getMetaData():
 #    test_meta_data = test_meta_data.merge(test_periods,
 #                                  on='object_id', how='left')
     
+    #mjd_det saved
+    
     # create 'target_id' column to map with 'target' classes
     # target_id is the index defined in previous step: see dictionary target_map
     # this column will be used later as index for the columns in the final submission
@@ -158,7 +210,6 @@ def getMetaData():
 #    return full_data, train_features
     
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
 #    from time import sleep
     ts_data = pd.read_csv('training_set.csv')
 #    period_df = train.groupby(['object_id', 'passband']).apply(lcperiod).reset_index()
@@ -171,7 +222,7 @@ if __name__ == "__main__":
 #                       & (period_df['passband']==passband)].values[0]
 #    plt.scatter((z['mjd']/period)%1, z['flux'])
 #    plt.show(block=False)
-    import seaborn as sns
+    
 #train_meta['lomb_error'] = np.exp(train_meta['lomb_error'])
     train_meta, test_meta_data = getMetaData()
     color_map = {92: '#75bbfd', 88: '#929591', 42: '#89fe05', 90: '#bf77f6',
@@ -193,14 +244,23 @@ if __name__ == "__main__":
     import feets
     obj_id = 615
     passband = 3
-    sample = ts_data.loc[(ts_data['object_id']==obj_id) & (ts_data['passband']==passband)]
-    sample = sample.sort_values('mjd')
-    fs = feets.FeatureSpace(only=['Std','Amplitude'])
-    features, values = fs.extract(time=sample['mjd'],
-                                  magnitude=sample['flux'],
-                                  error=sample['flux_err'])
+#    sample = ts_data.loc[(ts_data['object_id']==obj_id) & (ts_data['passband']==passband)]
+#    sample = sample.sort_values('mjd')
+#    fs = feets.FeatureSpace(only=['Std','Amplitude'])
+#    features, values = fs.extract(time=sample['mjd'],
+#                                  magnitude=sample['flux'],
+#                                  error=sample['flux_err'])
+#    sample = ts_data.iloc[:50000].reset_index().copy()
+#    z = ts_data.groupby(['object_id', 'passband']).apply(lcFeaturesEx).reset_index()
+#    z.to_csv('Autocor_length.csv', index=False)
+#    print(features)
 #    lc(time=time, magnitude=mag, error=error)
-    
+#    a = ts_data[(ts_data.detected==1), mjd_diff:=max(mjd)-min(mjd), by=object_id]
+    z = ts_data.loc[ts_data.detected==1].groupby('object_id')\
+            .apply(lambda df: pd.Series({'mjd_det': max(df.mjd) - min(df.mjd)}))\
+            .reset_index()
+    z.to_csv('mjd_det.csv', index=False)
+
     
     
     
