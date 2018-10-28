@@ -40,7 +40,12 @@ def getDataParameters():
     
     return target_map, label_features, all_classes, all_class_weights
 
-fs = feets.FeatureSpace(only=['Autocor_length'])
+try:
+    import sys
+    ft = sys.argv[1]
+except:
+    ft = ''
+fs = feets.FeatureSpace(only=[ft])
 #    'Std','Amplitude','FluxPercentileRatioMid50',
 #                              'Autocor_length',
 #                              'CAR_sigma', 'Gskew', 'LinearTrend',
@@ -119,7 +124,7 @@ def passbandToCols(df):
     return pd.DataFrame(columns=["{0}-{1}".format(idx[0], idx[1])\
                                  for idx in df.index.tolist()],
                         data=[df.values])
-    
+
 def getFullData(ts_data, meta_data):
     aggs = {'mjd': ['size'],
             'flux': ['min', 'max', 'mean', 'median', 'std', 'size', 'skew'],
@@ -151,6 +156,13 @@ def getFullData(ts_data, meta_data):
                 .apply(lcperiod).reset_index()
     full_data = full_data.merge(period_df, how='left',
                                 on=['object_id', 'passband'])
+    ####################### loaded data up to here #############################
+    
+#    #lc feats per passband and object_id
+#    lc_feats = ts_data.groupby(['object_id', 'passband'])\
+#                .apply(lcFeaturesEx).reset_index()
+#    full_data = full_data.merge(lc_feats, how='left',
+#                                on=['object_id', 'passband'])
     
     full_data = full_data.groupby('object_id').apply(passbandToCols)
     #bring back the object_id column but not the passband
@@ -162,12 +174,62 @@ def getFullData(ts_data, meta_data):
     )
     del full_data['distmod']#, full_data['hostgal_specz']
     
-#     detected-based mjd length feature for each object id only
-    z = ts_data.loc[ts_data.detected==1].groupby('object_id')\
-            .apply(lambda df: pd.Series({'mjd_det': max(df.mjd) - min(df.mjd)}))\
-            .reset_index()
-    full_data = full_data.merge(z, how='left', on='object_id')
-#        
+    #######################################
+##     detected-based mjd length feature for each object id only
+#    z = ts_data.loc[ts_data.detected==1].groupby('object_id')\
+#            .apply(lambda df: pd.Series({'mjd_det': max(df.mjd) - min(df.mjd)}))\
+#            .reset_index()
+#    full_data = full_data.merge(z, how='left', on='object_id')
+
+    #lc feats per object_id
+#    lc_feats = ts_data.groupby(['object_id', 'passband'])\
+#                .apply(lcFeaturesEx).reset_index()\
+#                .groupby('object_id').mean().reset_index()
+#    full_data = full_data.merge(lc_feats, how='left',
+#                                on=['object_id'])
+#    del full_data['passband']
+    
+    
+    train_features = [f for f in full_data.columns if f not in excluded_features]
+
+#    del agg_ts
+    gc.collect()
+    return full_data, train_features
+
+def getFullDataTrainOnly(ts_data, meta_data):
+    full_data = pd.read_csv('full_train_pb.csv')
+    ####################### loaded data up to here #############################
+    
+    # lc feats per passband and object_id
+    lc_feats = ts_data.groupby(['object_id', 'passband'])\
+                .apply(lcFeaturesEx).reset_index()
+    full_data = full_data.merge(lc_feats, how='left',
+                                on=['object_id', 'passband'])
+    
+    full_data = full_data.groupby('object_id').apply(passbandToCols)
+    #bring back the object_id column but not the passband
+    full_data = full_data.reset_index(level=0).reset_index(drop=True)
+    full_data = full_data.merge(
+        right=meta_data,
+        how='left',
+        on='object_id'
+    )
+    del full_data['distmod']#, full_data['hostgal_specz']
+    
+    #######################################
+#    detected-based mjd length feature for each object id only
+#    z = loaded as meta data
+#    full_data = full_data.merge(z, how='left', on='object_id')
+
+    #lc feats per object_id
+#    lc_feats = ts_data.groupby(['object_id', 'passband'])\
+#                .apply(lcFeaturesEx).reset_index()\
+#                .groupby('object_id').mean().reset_index()
+#    full_data = full_data.merge(lc_feats, how='left',
+#                                on=['object_id'])
+#    del full_data['passband']
+    
+    
     train_features = [f for f in full_data.columns if f not in excluded_features]
 
 #    del agg_ts
@@ -193,6 +255,8 @@ def getMetaData():
 #                                  on='object_id', how='left')
     
     #mjd_det saved
+    mjd_det = pd.read_csv('mjd_det.csv')
+    train_meta = train_meta.merge(mjd_det, on='object_id', how='left')
     
     # create 'target_id' column to map with 'target' classes
     # target_id is the index defined in previous step: see dictionary target_map

@@ -22,7 +22,7 @@ target_map, label_features, all_classes, all_class_weights \
 
 train_meta, test_meta_data = dproc.getMetaData()
 train = pd.read_csv('training_set.csv')
-train_full, train_features = dproc.getFullData(train, train_meta)
+train_full, train_features = dproc.getFullDataTrainOnly(train, train_meta)
 del train
 gc.collect()
 #train_full[['object_id', 'period']].to_csv("train_periods.csv", index=False)
@@ -295,8 +295,8 @@ import matplotlib.pyplot as plt
 plt.ioff()
 
 #mean barplot of importances
-imp_lgb_mean = np.log1p(imp_lgb[['gain', 'feature']])
-imp_lgb_mean = imp_lgb_mean.reset_index()
+#imp_lgb_mean = np.log1p(imp_lgb[['gain', 'feature']])
+#imp_lgb_mean = imp_lgb_mean.reset_index()
 fig, ax= plt.subplots(figsize=(8, 25))
 sns.barplot(x='gain', y='feature',
             data=imp_lgb.sort_values('gain', ascending=False))
