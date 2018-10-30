@@ -14,7 +14,7 @@ from sklearn.preprocessing import OneHotEncoder
 import lightgbm as lgbm
 import xgboost as xgb
 
-do_prediction = True
+do_prediction = False
 
 ########################### Data and Parameters Import ##########################
 target_map, label_features, all_classes, all_class_weights \

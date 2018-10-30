@@ -26,10 +26,10 @@ excluded_features = ['target', 'target_id', 'y', 'object_id', 'passband',
 
     
 def getDataParameters():
-    #actual class list
+    # actual class list
     all_classes = np.array(list(target_map.keys()))
 
-    #class weights
+    # class weights
     all_class_weights = {'class_' + str(cl):1 for cl in all_classes}
     all_class_weights['class_99'] = 2
     all_class_weights['class_64'] = 2
@@ -43,15 +43,12 @@ def getDataParameters():
 try:
     import sys
     ft = sys.argv[1]
-except:
-    ft = ''
-fs = feets.FeatureSpace(only=[ft])
-#    'Std','Amplitude','FluxPercentileRatioMid50',
-#                              'Autocor_length',
-#                              'CAR_sigma', 'Gskew', 'LinearTrend',
-#                              'MaxSlope', 'Meanvariance', 
-#                              'PercentDifferenceFluxPercentile',
-#                              'SmallKurtosis'
+except IndexError:
+    print("using default feets")
+    ft = ['Eta_e']
+#    ft = ['Eta_e', 'Amplitude', 'Autocor_length', 'Beyond1Std']
+fs = feets.FeatureSpace(only=ft)
+print(ft)
 
 def lcperiod(df_main):
     df_main = df_main.sort_values('mjd')
@@ -121,7 +118,7 @@ def passbandToCols(df):
     except KeyError:
         pass
     df = df.set_index('passband').unstack()
-    return pd.DataFrame(columns=["{0}-{1}".format(idx[0], idx[1])\
+    return pd.DataFrame(columns=["{0}--{1}".format(idx[0], idx[1])\
                                  for idx in df.index.tolist()],
                         data=[df.values])
 
@@ -143,28 +140,28 @@ def getFullData(ts_data, meta_data):
     ]
     full_data.columns = new_columns
     full_data = full_data.reset_index()
-    
-#    full_data = full_data.drop(['mjd_max', 'mjd_min'], axis=1)
 
     full_data['flux_standard_err']\
         = full_data['flux_mean']/np.sqrt(full_data['flux_size'])
     del full_data['flux_size']
-#    del full_data['mjd_size']
     
-    #period calculation if period is per passband
-    period_df = ts_data.groupby(['object_id', 'passband'])\
-                .apply(lcperiod).reset_index()
-    full_data = full_data.merge(period_df, how='left',
-                                on=['object_id', 'passband'])
     ####################### loaded data up to here #############################
+    #period calculation if period is per passband
+#    period_df = ts_data.groupby(['object_id', 'passband'])\
+#                .apply(lcperiod).reset_index()
+#    full_data = full_data.merge(period_df, how='left',
+#                                on=['object_id', 'passband'])
     
-#    #lc feats per passband and object_id
+    # lc feats per passband and object_id #
 #    lc_feats = ts_data.groupby(['object_id', 'passband'])\
 #                .apply(lcFeaturesEx).reset_index()
 #    full_data = full_data.merge(lc_feats, how='left',
 #                                on=['object_id', 'passband'])
     
+    # make values for each column VS passband a separate column
+    # e.g. period of passband 1 becomes period-1 column then passband column is omitted
     full_data = full_data.groupby('object_id').apply(passbandToCols)
+    
     #bring back the object_id column but not the passband
     full_data = full_data.reset_index(level=0).reset_index(drop=True)
     full_data = full_data.merge(
@@ -175,20 +172,11 @@ def getFullData(ts_data, meta_data):
     del full_data['distmod']#, full_data['hostgal_specz']
     
     #######################################
-##     detected-based mjd length feature for each object id only
-#    z = ts_data.loc[ts_data.detected==1].groupby('object_id')\
-#            .apply(lambda df: pd.Series({'mjd_det': max(df.mjd) - min(df.mjd)}))\
-#            .reset_index()
-#    full_data = full_data.merge(z, how='left', on='object_id')
-
-    #lc feats per object_id
-#    lc_feats = ts_data.groupby(['object_id', 'passband'])\
-#                .apply(lcFeaturesEx).reset_index()\
-#                .groupby('object_id').mean().reset_index()
-#    full_data = full_data.merge(lc_feats, how='left',
-#                                on=['object_id'])
-#    del full_data['passband']
-    
+#     detected-based mjd length feature for each object id only
+    z = ts_data.loc[ts_data.detected==1].groupby('object_id')\
+            .apply(lambda df: pd.Series({'mjd_det': max(df.mjd) - min(df.mjd)}))\
+            .reset_index()
+    full_data = full_data.merge(z, how='left', on='object_id')    
     
     train_features = [f for f in full_data.columns if f not in excluded_features]
 
@@ -196,11 +184,11 @@ def getFullData(ts_data, meta_data):
     gc.collect()
     return full_data, train_features
 
-def getFullDataTrainOnly(ts_data, meta_data):
+def getFullDataFromSaved(ts_data, meta_data):
     full_data = pd.read_csv('full_train_pb.csv')
     ####################### loaded data up to here #############################
     
-    # lc feats per passband and object_id
+    # lc feats per passband and object_id #
     lc_feats = ts_data.groupby(['object_id', 'passband'])\
                 .apply(lcFeaturesEx).reset_index()
     full_data = full_data.merge(lc_feats, how='left',
@@ -217,14 +205,21 @@ def getFullDataTrainOnly(ts_data, meta_data):
     del full_data['distmod']#, full_data['hostgal_specz']
     
     #######################################
-#    detected-based mjd length feature for each object id only
-#    z = loaded as meta data
-#    full_data = full_data.merge(z, how='left', on='object_id')
+    z = ts_data.loc[ts_data.detected==1].groupby('object_id')\
+            .apply(lambda df: pd.Series({'mjd_det': max(df.mjd) - min(df.mjd)}))\
+            .reset_index()
+    full_data = full_data.merge(z, how='left', on='object_id')
 
-    #lc feats per object_id
+#    #lc feats per object_id
 #    lc_feats = ts_data.groupby(['object_id', 'passband'])\
 #                .apply(lcFeaturesEx).reset_index()\
 #                .groupby('object_id').mean().reset_index()
+#    full_data = full_data.merge(lc_feats, how='left',
+#                                on=['object_id'])
+#    del full_data['passband']
+    
+#    lc_feats = ts_data.groupby('object_id')\
+#                .apply(lcFeaturesEx).reset_index()
 #    full_data = full_data.merge(lc_feats, how='left',
 #                                on=['object_id'])
 #    del full_data['passband']
@@ -240,11 +235,11 @@ def getMetaData():
     train_meta = pd.read_csv('training_set_metadata.csv')
     test_meta_data = pd.read_csv('test_set_metadata.csv')
     
-#    train_meta.loc[train_meta['hostgal_specz'] == 0, 'is_galactic'] = 0
-#    train_meta.loc[train_meta['hostgal_specz'] > 0, 'is_galactic'] = 1
+#    train_meta.loc[train_meta['hostgal_photoz'] == 0, 'is_galactic'] = 1
+#    train_meta.loc[train_meta['hostgal_photoz'] > 0, 'is_galactic'] = 0
 #    
-#    test_meta_data.loc[test_meta_data['hostgal_specz'] == 0, 'is_galactic'] = 0
-#    test_meta_data.loc[test_meta_data['hostgal_specz'] > 0, 'is_galactic'] = 1
+#    test_meta_data.loc[test_meta_data['hostgal_photoz'] == 0, 'is_galactic'] = 1
+#    test_meta_data.loc[test_meta_data['hostgal_photoz'] > 0, 'is_galactic'] = 0
     
     #period merging to meta data if period is calculated as average
 #    train_periods = pd.read_csv('train_periods_saved.csv')
@@ -255,8 +250,8 @@ def getMetaData():
 #                                  on='object_id', how='left')
     
     #mjd_det saved
-    mjd_det = pd.read_csv('mjd_det.csv')
-    train_meta = train_meta.merge(mjd_det, on='object_id', how='left')
+#    mjd_det = pd.read_csv('mjd_det.csv')
+#    train_meta = train_meta.merge(mjd_det, on='object_id', how='left')
     
     # create 'target_id' column to map with 'target' classes
     # target_id is the index defined in previous step: see dictionary target_map
@@ -264,6 +259,15 @@ def getMetaData():
     #target_ids = [target_map[i] for i in train_meta['target']]
     train_meta['target_id'] = train_meta['target'].map(target_map)
     #train_meta = train_full.drop('target', axis=1)
+    
+    #saved extracted features from LC
+#    calc_feats_test
+    lc_feats_train = pd.read_csv('calc_lcfeats_train.csv')
+    lc_feats_test = pd.read_csv('calc_lcfeats_test.csv')
+    train_meta = train_meta.merge(lc_feats_train,
+                                  on='object_id', how='left')
+    test_meta_data = test_meta_data.merge(lc_feats_test,
+                                  on='object_id', how='left')
     
 #    from sklearn.neighbors import KernelDensity
 #    kde = KernelDensity(bandwidth=0.5).fit(train_meta['mwebv'].values.reshape(-1,1))
@@ -293,7 +297,7 @@ if __name__ == "__main__":
                  65: '#d1b26f', 16: '#00ffff', 67: '#13eac9', 95: '#35063e',
                  62: '#0504aa', 15: '#c7fdb5', 6: '#cb416b', 52: '#fdaa48',
                  64: '#040273', 53: '#ffff84'}
-    train_meta['cl_color'] = train_meta['target'].map(color_map)       
+    train_meta['cl_color'] = train_meta['target'].map(color_map)
 ##    sns.scatterplot(x='target', y='mwebv', data=train_meta,
 ##                palette=train_meta['cl_color'])
 #    plt.scatter(x=train_meta['target'], y=train_meta['mwebv'], c=train_meta['cl_color'])

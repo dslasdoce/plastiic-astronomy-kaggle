@@ -36,4 +36,18 @@ LightGBM: 0.9637247944464595
 XGBoost: 1.0413743507725721
 Combined: 0.9645660198304054
 
-
+#new feats effect
+base = 0.8876586505769922
+Amplitude - 0.8730396885386367
+AndersonDarling - 8942799762991649 (x)
+Autocor_length - 0.8738912955568754
+Beyond1Std - 0.8709337786937938
+CAR_sigma - (too long to calculate)
+Con - error
+Eta_e - 0.8528716360904305
+FluxPercentileRatioMid50 - having error
+Freq{i}_harmonics_amplitude_{j}	- 
+Gskew - .89 (x)
+LinearTrend - 0.8888419089070486
+MaxSlope - 0.8769868977560489
+StructureFunction_index_21 - 8551423800772618

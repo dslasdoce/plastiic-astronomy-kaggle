@@ -14,8 +14,8 @@ from sklearn.preprocessing import OneHotEncoder
 import lightgbm as lgbm
 import xgboost as xgb
 
-do_prediction = False
-
+do_prediction = True
+loaded_test = False
 ########################### Data and Parameters Import ##########################
 target_map, label_features, all_classes, all_class_weights \
     = dproc.getDataParameters()
@@ -30,6 +30,12 @@ gc.collect()
 all_clmap_vals = np.array(list(target_map.values()))
 print("Train Feats: {0}".format(train_features))
 print("Train Data All COLS: {0}".format(train_full.columns))
+
+calc_feats = ['period', 'power', 'Eta_e']
+label_lc_feats = ['object_id']
+for f in calc_feats:
+    for i in range(6):
+        label_lc_feats.append(f + '--' + str(i))
 ############################# LOSS FUNCTION ####################################
 def multiWeightedLoss(target_class, pred_class, no_class99=False):
     #remove class 99
@@ -328,12 +334,13 @@ for i, (train_idx, cv_idx) in enumerate(folds):
     lgbm_list.append(clf_lgbm)
     xgb_list.append(clf_xgb)
 
-oof_preds_comb = 0.7*oof_preds_lgbm + 0.3*oof_preds_xgb
-
 print("LightGBM: {0}".format(multiWeightedLoss(train_full['target_id'],
                                                oof_preds_lgbm)))
 print("XGBoost: {0}".format(multiWeightedLoss(train_full['target_id'],
                                               oof_preds_xgb)))
+
+lgb_weight = 0.7
+oof_preds_comb = lgb_weight*oof_preds_lgbm + (1-lgb_weight)*oof_preds_xgb
 print("Combined: {0}".format(multiWeightedLoss(train_full['target_id'],
                                                oof_preds_comb)))
 
@@ -358,7 +365,7 @@ plt.ioff()
 #imp_xgb_mean = imp_xgb_mean.reset_index()
 fig, ax = plt.subplots(figsize=(8, 14))
 sns.barplot(x='gain', y='feature', ax=ax,
-            data=imp_xgb.sort_values('gain', ascending=False).head(50))
+            data=imp_xgb.sort_values('gain', ascending=False).head(200))
 #fig.suptitle('XGB Mean Feature Importance', fontsize=16)
 ax.set_yticklabels(ax.get_yticklabels(), fontsize=7)
 plt.tight_layout()
@@ -368,7 +375,7 @@ plt.show(block=False)
 #imp_lgb_mean = imp_lgb_mean.reset_index()
 fig, ax = plt.subplots(figsize=(8, 14))
 sns.barplot(x='gain', y='feature',
-            data=imp_lgb.sort_values('gain', ascending=False).head(50))
+            data=imp_lgb.sort_values('gain', ascending=False).head(200))
 fig.suptitle('LGB Mean Feature Importance', fontsize=16)
 fig.tight_layout()
 plt.tight_layout()
@@ -376,6 +383,17 @@ plt.show(block=False)
 
 
 ######################### #create submission file #############################
+if loaded_test is True:
+    full_test = pd.read_csv('full_test_saved.csv')
+    for clf_lgb, clf_xgb in zip(lgbm_list, xgb_list):
+        preds_lgb = clf_lgb.predict_proba(full_test[train_features],
+                                  num_iteration=clf_lgb.best_iteration_)\
+                    / len(folds)
+        preds_xgb = clf_xgb.predict_proba(full_test[train_features])\
+                    / len(folds)
+
+    preds_comb = 0.7*preds_lgb + 0.3*preds_xgb
+    
 if do_prediction is True:
     import time
     train_mean = train_full.mean(axis=0)
@@ -440,12 +458,11 @@ if do_prediction is True:
 #            preds_99 *= (1 - preds[:, i])
         
         #save periods
-        if i_c == 0:
-            full_test[['object_id', 'period']]\
-            .to_csv("test_periods.csv", index=False)
-        else: 
-            full_test[['object_id', 'period']].to_csv("test_periods.csv",
-                         index=False, header=False, mode='a')
+#        if i_c == 0:
+#            full_test.to_csv("full_test_saved.csv", index=False)
+#        else: 
+#            full_test.to_csv("full_test_saved.csv",
+#                             index=False, header=False, mode='a')
         # Store predictions
         print("Saving predictions...")
          #create prediction file for each model
@@ -469,7 +486,7 @@ if do_prediction is True:
         if (i_c + 1) % 10 == 0:
             print('%15d done in %5.1f' % (chunks * (i_c + 1), (time.time() - start) / 60))
 
-    model = 'sfd_preds_comb'
+    model = 'sfd_predictions_comb'
     z = pd.read_csv(model + '.csv')
     
     preds_99 = np.ones(z.shape[0])
@@ -485,3 +502,15 @@ if do_prediction is True:
     #z = z[['object_id'] + label_features]
     tech ='_99sc'
     z.to_csv(model + tech + '.csv', index=False)
+    #label_features_exgal
+#    gal_objs = test_meta_data\
+#                .loc[test_meta_data['hostgal_photoz']==0, 'object_id']
+#    exgal_objs = test_meta_data\
+#            .loc[test_meta_data['hostgal_photoz']>0, 'object_id']
+#    z.loc[z['object_id'].isin(gal_objs), label_features_exgal] = 0
+#    z.loc[z['object_id'].isin(exgal_objs), label_features_gal] = 0
+    
+    tech ='_sc99'
+    z.to_csv(model + tech + '.csv', index=False)
+    
+#    z = pd.read_csv('full_test_saved.csv')

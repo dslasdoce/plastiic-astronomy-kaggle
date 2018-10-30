@@ -131,3 +131,18 @@ def passbandToCols(df):
 #frequency, power = LombScargle(cl_lc_test['mjd'], cl_lc_test['flux']).autopower()
 #best_period2 = 1/frequency[np.argmax(power)]
 
+chunks = 100000
+feats = ['period', 'power', 'Eta_e']
+labels = ['object_id']
+for f in feats:
+    for i in range(6):
+        labels.append(f + '--' + str(i))
+        
+for i_c, df in enumerate(pd.read_csv('full_test_saved.csv',
+                                     chunksize=chunks, iterator=True)):
+    if i_c == 0:
+        df[labels].to_csv('calc_feats.csv', index=False)
+    else: 
+        df[labels].to_csv('calc_feats.csv', 
+                          header=False, mode='a', index=False)
+z = pd.read_csv('calc_feats.csv')
