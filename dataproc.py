@@ -22,7 +22,8 @@ target_map = {6: 0, 15:1, 16:2, 42:3, 52: 4, 53: 5, 62: 6, 64: 7,
               65: 8, 67: 9, 88: 10, 90: 11, 92: 12, 95: 13, 99: 14}
 target_map = dict(sorted(target_map.items(), key=operator.itemgetter(1)))
 excluded_features = ['target', 'target_id', 'y', 'object_id', 'passband',
-                     'hostgal_specz']
+                     'hostgal_specz', 'distmod']#, 'ra', 'decl', 'gal_l', 'gal_b',
+                     #'ddf']
 
     
 def getDataParameters():
@@ -39,13 +40,13 @@ def getDataParameters():
     label_features = ['class_' + str(cl) for cl in all_classes]
     
     return target_map, label_features, all_classes, all_class_weights
-
+#Q31
 try:
     import sys
     ft = sys.argv[1]
 except IndexError:
     print("using default feets")
-    ft = ['Eta_e']
+    ft = ['Beyond1Std']
 #    ft = ['Eta_e', 'Amplitude', 'Autocor_length', 'Beyond1Std']
 fs = feets.FeatureSpace(only=ft)
 print(ft)
