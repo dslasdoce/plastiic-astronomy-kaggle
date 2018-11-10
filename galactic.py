@@ -23,9 +23,9 @@ target_map, label_features, all_classes, all_class_weights \
 train_meta, test_meta_data = dproc.getMetaData()
 train = pd.read_csv('training_set.csv')
 train_full, train_features = dproc.getFullData(train, train_meta)
-gal_classes = train_meta['target'].loc[train_meta['hostgal_specz'] == 0].unique()
+gal_classes = train_meta['target'].loc[train_meta['hostgal_photoz'] == 0].unique()
 gal_classes = all_classes[np.isin(all_classes, gal_classes)]
-exgal_classes = train_meta['target'].loc[train_meta['hostgal_specz'] != 0].unique()
+exgal_classes = train_meta['target'].loc[train_meta['hostgal_photoz'] != 0].unique()
 exgal_classes = all_classes[np.isin(all_classes, exgal_classes)]
 mode = None
 
@@ -176,7 +176,7 @@ xgb_params =  {
       }
 
 ############################### Galactic #######################################
-train_full_gal = train_full.loc[train_meta['hostgal_specz'] == 0]\
+train_full_gal = train_full.loc[train_meta['hostgal_photoz'] == 0]\
                  .reset_index(drop=True)
 folds = getFolds(train_full_gal['target'])
 lgbm_list = []
@@ -260,7 +260,7 @@ xgb_gals = xgb_list
 lgb_gals = lgbm_list
 
 ############################### Ex Galactic ####################################
-train_full_exgal = train_full.loc[train_meta['hostgal_specz'] != 0]\
+train_full_exgal = train_full.loc[train_meta['hostgal_photoz'] != 0]\
                  .reset_index(drop=True)
 folds = getFolds(train_full_exgal['target'])
 lgbm_list = []
@@ -375,8 +375,8 @@ print("Stacked: {0}"\
                                 preds_comb_stack[label_features].values)))
 
 preds_comb_stack = preds_comb_stack[label_features].copy()
-preds_comb_stack.loc[train_full['hostgal_specz']==0, label_features_exgal] = 0
-preds_comb_stack.loc[train_full['hostgal_specz']!=0, label_features_gal] = 0
+preds_comb_stack.loc[train_full['hostgal_photoz']==0, label_features_exgal] = 0
+preds_comb_stack.loc[train_full['hostgal_photoz']!=0, label_features_gal] = 0
 print("Manual Hostgal: {0}".format(multiWeightedLoss(train_full['target'],
                                                preds_comb_stack.values)))
 #import sys
@@ -537,7 +537,7 @@ if do_prediction is True:
                         / len(folds)
                 preds_xgb \
                     += clf_xgb.predict_proba(full_test[train_features]) / len(folds)
-        preds_comb_gal = 0.7*preds_lgb + 0.3*preds_xgb
+        preds_comb_gal = 0.5*preds_lgb + 0.5*preds_xgb
         preds_comb_gal = pd.DataFrame(data=preds_comb_gal,
                                       columns=label_features_gal)
         preds_comb_gal['object_id'] = full_test['object_id']
@@ -562,16 +562,27 @@ if do_prediction is True:
                         / len(folds)
                 preds_xgb \
                     += clf_xgb.predict_proba(full_test[train_features]) / len(folds)
-        preds_comb_exgal = 0.7*preds_lgb + 0.3*preds_xgb
+        preds_comb_exgal = 0.5*preds_lgb + 0.5*preds_xgb
         preds_comb_exgal = pd.DataFrame(data=preds_comb_exgal,
                                       columns=label_features_exgal)
         preds_comb_exgal['object_id'] = full_test['object_id']
         
         print("Saving predictions...")
         name = 'comb'
-        preds_comb_stack = pd.concat([preds_comb_exgal, preds_comb_gal], axis=1)
-        preds_comb_stack.loc[full_test['hostgal_specz']==0, label_features_exgal] = 0
-        preds_comb_stack.loc[full_test['hostgal_specz']>0, label_features_gal] = 0
+        
+#        preds_comb_stack = pd.concat([preds_comb_exgal, preds_comb_gal], axis=1)
+        preds_comb_stack = preds_comb_exgal.merge(preds_comb_gal,
+                                                  on='object_id',
+                                                  how='inner')
+        preds_99 = np.ones(preds_comb_stack.shape[0])
+        no_99 = label_features.copy()
+        no_99.remove('class_99')
+        for i in range(preds_comb_stack[no_99].values.shape[1]):
+            preds_99 *= (1 - preds_comb_stack[no_99].values[:, i])
+        preds_comb_stack['class_99'] = 0.14 * preds_99 / np.mean(preds_99)
+        preds_comb_stack = preds_comb_stack[['object_id'] + label_features]
+        preds_comb_stack.loc[full_test['hostgal_photoz']==0, label_features_exgal] = 0
+        preds_comb_stack.loc[full_test['hostgal_photoz']>0, label_features_gal] = 0
         
         if i_c == 0:
             preds_comb_stack.to_csv('sfd_predictions_{0}.csv'.format(name), index=False)

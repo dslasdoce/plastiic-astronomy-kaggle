@@ -24,7 +24,7 @@ target_map = dict(sorted(target_map.items(), key=operator.itemgetter(1)))
 excluded_features = ['target', 'target_id', 'y', 'object_id', 'passband',
                      'hostgal_specz', 'distmod']#, 'ra', 'decl', 'gal_l', 'gal_b',
                      #'ddf']
-excluded_features += []
+
     
 def getDataParameters():
     # actual class list
@@ -150,7 +150,7 @@ def getFullData(ts_data, meta_data):
             'flux_err': ['min', 'max', 'mean', 'median', 'std', 'skew'],
             'detected': ['mean'],
             'flux_ratio_sq': ['sum', 'skew'],
-            'flux_by_flux_ratio_sq': ['sum']}
+            'flux_by_flux_ratio_sq': ['sum', 'skew']}
     
     ts_data['flux_ratio_sq'] = np.power(ts_data['flux'] / ts_data['flux_err'], 2.0)
     ts_data['flux_by_flux_ratio_sq'] = ts_data['flux'] * ts_data['flux_ratio_sq']
@@ -183,6 +183,7 @@ def getFullData(ts_data, meta_data):
     # make values for each column VS passband a separate column
     # e.g. period of passband 1 becomes period-1 column then passband column is omitted
     full_data = full_data.groupby('object_id').apply(passbandToCols)
+    
     #bring back the object_id column but not the passband
     full_data = full_data.reset_index(level=0).reset_index(drop=True)
     full_data = full_data.merge(
@@ -191,28 +192,6 @@ def getFullData(ts_data, meta_data):
         on='object_id'
     )
     del full_data['distmod']#, full_data['hostgal_specz']
-    
-    ############################################################################
-    aggs = {'flux_by_flux_ratio_sq': ['skew']}
-    
-    ts_data['flux_ratio_sq'] = np.power(ts_data['flux'] / ts_data['flux_err'], 2.0)
-    ts_data['flux_by_flux_ratio_sq'] = ts_data['flux'] * ts_data['flux_ratio_sq']
-
-    #feature aggregation per passband
-    full_data2 = ts_data.groupby('object_id').agg(aggs)
-    new_columns = [
-        k + '_' + agg for k in aggs.keys() for agg in aggs[k]
-    ]
-    full_data2.columns = new_columns
-    full_data2 = full_data2.reset_index()
-
-#    full_data2['flux_standard_err']\
-#        = full_data2['flux_mean']/np.sqrt(full_data2['flux_size'])
-#    del full_data2['flux_size']
-    full_data = full_data.merge(full_data2, how='left', on='object_id')    
-    ############################################################################
-    
-
     
     #######################################
 #     detected-based mjd length feature for each object id only
@@ -319,10 +298,9 @@ def getMetaData():
     test_meta_data = test_meta_data.merge(lc_feats_test,
                                   on='object_id', how='left')
     
-    train_meta['hostgal_photoz_sq'] = np.power(train_meta['hostgal_photoz_sq'], 2.0)
-#    train_meta = train_meta.merge(pd.read_csv('frq.csv'),
-#                                  on='object_id',
-#                                  how='inner')
+    train_meta = train_meta.merge(pd.read_csv('frq.csv'),
+                                  on='object_id',
+                                  how='inner')
     
 #    from sklearn.neighbors import KernelDensity
 #    kde = KernelDensity(bandwidth=0.5).fit(train_meta['mwebv'].values.reshape(-1,1))

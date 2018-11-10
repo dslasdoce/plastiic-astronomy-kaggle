@@ -22,7 +22,7 @@ target_map, label_features, all_classes, all_class_weights \
 
 train_meta, test_meta_data = dproc.getMetaData()
 train = pd.read_csv('training_set.csv')
-train_full, train_features = dproc.getFullDataFromSaved(train, train_meta)
+train_full, train_features = dproc.getFullData(train, train_meta)
 del train
 gc.collect()
 #train_full[['object_id', 'period']].to_csv("train_periods.csv", index=False)
@@ -135,95 +135,6 @@ def getFolds(ser_target=None, n_splits=5):
 
 folds = getFolds(train_full['target_id'])
 
-###################################### Tuning ##################################
-#from skopt.space import Real, Integer
-#dim_learning_rate = Real(low=1e-6, high=1e-1, prior='log-uniform',name='learning_rate')
-#dim_estimators = Integer(low=50, high=2000,name='n_estimators')
-#dim_max_depth = Integer(low=1, high=6,name='max_depth')
-#
-#dimensions = [dim_learning_rate,
-#              dim_estimators,
-#              dim_max_depth]
-#
-#default_parameters = [0.03,1000,3]
-#
-#def createModel(learning_rate,n_estimators,max_depth):
-#    oof_preds_lgbm = np.zeros((train_full.shape[0], 15))     
-#    for i, (train_idx, cv_idx) in enumerate(folds):
-#        X_train = train_full[train_features].iloc[train_idx]
-#        Y_train = train_full['target_id'].iloc[train_idx]
-#        X_cv = train_full[train_features].iloc[cv_idx]
-#        Y_cv = train_full['target_id'].iloc[cv_idx]
-#        print ("\n\n" + "-"*20 + "Fold " + str(i+1) + "-"*20)
-#        print ("\n" + "*"*10 + "LightGBM" + "*"*10)
-#        
-#        clf_lgbm = lgbm.LGBMClassifier(**lgb_params,learning_rate=learning_rate,
-#                                n_estimators=n_estimators,max_depth=max_depth)
-#        clf_lgbm.fit(
-#            X_train, Y_train,
-#            eval_set=[(X_train, Y_train), (X_cv, Y_cv)],
-#            verbose=False,
-#            eval_metric=lgbMultiWeightedLoss,
-#            early_stopping_rounds=50,
-#        )
-#        
-#        oof_preds_lgbm[cv_idx, :14] \
-#            = clf_lgbm.predict_proba(X_cv, num_iteration=clf_lgbm.best_iteration_)
-#    
-##        lgbm_list.append(clf_lgbm)
-#    
-#    loss = multiWeightedLoss(train_full['target_id'], oof_preds_lgbm)
-#    print('MULTI WEIGHTED LOG LOSS : %.5f ' % loss)
-#    
-#    return loss
-#
-#from skopt.utils import use_named_args
-#@use_named_args(dimensions=dimensions)
-#def fitness(learning_rate,n_estimators,max_depth):
-#    """
-#    Hyper-parameters:
-#    learning_rate:     Learning-rate for the optimizer.
-#    n_estimators:      Number of estimators.
-#    max_depth:         Maximum Depth of tree.
-#    """
-#
-#    # Print the hyper-parameters.
-#    print('learning rate: {0:.2e}'.format(learning_rate))
-#    print('estimators:', n_estimators)
-#    print('max depth:', max_depth)
-#    
-#    lv= createModel(learning_rate=learning_rate,
-#                    n_estimators=n_estimators,
-#                    max_depth = max_depth)
-#    return lv
-#          
-#lgb_params = {
-#    'boosting_type': 'gbdt',
-#    'objective': 'multiclass',
-#    'num_class': 14,
-#    'metric': 'multi_logloss',
-#    'subsample': .9,
-#    'colsample_bytree': .7,
-#    'reg_alpha': .01,
-#    'reg_lambda': .01,
-#    'min_split_gain': 0.01,
-#    'min_child_weight': 10,
-#    'silent':True,
-#    'verbosity':-1,
-#    'nthread':-1
-#}
-#from skopt import gp_minimize
-#
-#search_result = gp_minimize(func=fitness,
-#                            dimensions=dimensions,
-#                            acq_func='EI', # Expected Improvement.
-#                            n_calls=20,
-#                           x0=default_parameters)
-#import sys
-#sys.exit()
-#learning_rate = search_result.x[0]
-#n_estimators = search_result.x[1]
-#max_depth = search_result.x[2]
 ################### LightGBM ########################
 lgbm_params =  {
     'task': 'train',
@@ -249,6 +160,8 @@ imp_lgb = pd.DataFrame()
 
 #oof_preds_both = np.zeros((train_full.shape[0], 15))
 #test_prediction = np.zeros((test_meta_data.shape[0], 15))
+train_mean = train_full.mean(axis=0)
+train_full.fillna(train_mean, inplace=True)
 for i, (train_idx, cv_idx) in enumerate(folds):
     X_train = train_full[train_features].iloc[train_idx]
     Y_train = train_full['target_id'].iloc[train_idx]
@@ -283,6 +196,11 @@ for i, (train_idx, cv_idx) in enumerate(folds):
 
 print("LightGBM: {0}".format(multiWeightedLoss(train_full['target_id'],
                                                oof_preds_lgbm)))
+df = pd.DataFrame(data=oof_preds_lgbm, columns=label_features)
+df['object_id'] = train_full['object_id']
+df['target_id'] = train_full['target_id']
+df['target'] = train_full['target']
+df.to_csv('oof_{0}.csv'.format(lgbm), index=False)
 
 gal_classes = train_meta['target'].loc[train_meta['hostgal_specz'] == 0].unique()
 gal_classes = all_classes[np.isin(all_classes, gal_classes)]
@@ -294,17 +212,14 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 plt.ioff()
 
-#mean barplot of importances
-#imp_lgb_mean = np.log1p(imp_lgb[['gain', 'feature']])
-#imp_lgb_mean = imp_lgb_mean.reset_index()
-fig, ax= plt.subplots(figsize=(8, 25))
-sns.barplot(x='gain', y='feature',
-            data=imp_lgb.sort_values('gain', ascending=False).head(200))
-fig.suptitle('LGB Mean Feature Importance', fontsize=16)
-fig.tight_layout()
-ax.set_yticklabels(ax.get_yticklabels(), fontsize=7)
-plt.tight_layout()
-plt.show(block=False)
+#fig, ax= plt.subplots(figsize=(8, 25))
+#sns.barplot(x='gain', y='feature',
+#            data=imp_lgb.sort_values('gain', ascending=False).head(200))
+#fig.suptitle('LGB Mean Feature Importance', fontsize=16)
+#fig.tight_layout()
+#ax.set_yticklabels(ax.get_yticklabels(), fontsize=7)
+#plt.tight_layout()
+#plt.show(block=False)
 
 
 ######################### #create submission file #############################

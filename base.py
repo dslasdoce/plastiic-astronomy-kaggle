@@ -14,7 +14,7 @@ from sklearn.preprocessing import OneHotEncoder
 import lightgbm as lgbm
 import xgboost as xgb
 
-do_prediction = True
+do_prediction = False
 loaded_test = False
 ########################### Data and Parameters Import ##########################
 target_map, label_features, all_classes, all_class_weights \
@@ -25,6 +25,7 @@ train = pd.read_csv('training_set.csv')
 train_full, train_features = dproc.getFullData(train, train_meta)
 del train
 gc.collect()
+
 #train_full[['object_id', 'period']].to_csv("train_periods.csv", index=False)
 #target_id list: will be used in one hot encoding of labels
 all_clmap_vals = np.array(list(target_map.values()))
@@ -284,7 +285,11 @@ oof_preds_xgb = np.zeros((train_full.shape[0], 15))
 imp_lgb = pd.DataFrame()
 imp_xgb = pd.DataFrame()
 #oof_preds_both = np.zeros((train_full.shape[0], 15))
-#test_prediction = np.zeros((test_meta_data.shape[0], 15))
+#fill na
+train_mean = train_full.mean(axis=0)
+#train_full.fillna(train_mean, inplace=True)
+
+#train
 for i, (train_idx, cv_idx) in enumerate(folds):
     X_train = train_full[train_features].iloc[train_idx]
     Y_train = train_full['target_id'].iloc[train_idx]
@@ -339,10 +344,18 @@ print("LightGBM: {0}".format(multiWeightedLoss(train_full['target_id'],
 print("XGBoost: {0}".format(multiWeightedLoss(train_full['target_id'],
                                               oof_preds_xgb)))
 
-lgb_weight = 0.7
+lgb_weight = 0.5
 oof_preds_comb = lgb_weight*oof_preds_lgbm + (1-lgb_weight)*oof_preds_xgb
 print("Combined: {0}".format(multiWeightedLoss(train_full['target_id'],
                                                oof_preds_comb)))
+
+#save oof
+for preds, name in zip([oof_preds_lgbm, oof_preds_xgb], ['lgbm', 'xgb']):
+    df = pd.DataFrame(data=preds, columns=label_features)
+    df['object_id'] = train_full['object_id']
+    df['target_id'] = train_full['target_id']
+    df['target'] = train_full['target']
+    df.to_csv('oof_{0}.csv'.format(name), index=False)
 
 oof_preds_comb = pd.DataFrame(data=oof_preds_comb, columns=label_features)
 z = oof_preds_comb.copy()
@@ -384,24 +397,60 @@ plt.show(block=False)
 
 ######################### #create submission file #############################
 if loaded_test is True:
-    full_test = pd.read_csv('full_test_saved.csv')
-    for clf_lgb, clf_xgb in zip(lgbm_list, xgb_list):
-        preds_lgb = clf_lgb.predict_proba(full_test[train_features],
-                                  num_iteration=clf_lgb.best_iteration_)\
-                    / len(folds)
-        preds_xgb = clf_xgb.predict_proba(full_test[train_features])\
-                    / len(folds)
-
-    preds_comb = 0.7*preds_lgb + 0.3*preds_xgb
-    
+    chunks = 300000
+    temp_label_features = label_features.copy()
+    temp_label_features.remove("class_99")
+    for i_c, full_test in \
+    enumerate(pd.read_csv('/media/dslasdoce/Data/Astro/full_test_saved.csv',
+                          chunksize=chunks, iterator=True)):
+        print("*"*20 + "chunk: " + str(i_c) + "*"*20)
+        
+        # Make predictions
+        print("Predicting...")
+        preds_lgb = None
+        preds_xgb = None
+        for clf_lgb, clf_xgb in zip(lgbm_list, xgb_list):
+            if preds_lgb is None:
+                preds_lgb = clf_lgb.predict_proba(full_test[train_features],
+                                          num_iteration=clf_lgb.best_iteration_)\
+                            / len(folds)
+                preds_xgb = clf_xgb.predict_proba(full_test[train_features])\
+                            / len(folds)
+            else:
+                preds_lgb \
+                    += clf_lgb.predict_proba(full_test[train_features],
+                                             num_iteration=clf_lgb.best_iteration_)\
+                        / len(folds)
+                preds_xgb \
+                    += clf_xgb.predict_proba(full_test[train_features]) / len(folds)
+        preds_comb = lgb_weight*preds_lgb + (1-lgb_weight)*preds_xgb
+        # Store predictions
+        print("Saving predictions...")
+         #create prediction file for each model
+#        for _pred, name in zip([preds_lgb, preds_xgb, preds_comb], ['lgb', 'xgb', 'comb']):
+        for _pred, name in zip([preds_comb], ['comb']):
+            preds_df = pd.DataFrame(_pred, columns=[temp_label_features])
+            preds_df['object_id'] = full_test['object_id'].values
+            preds_df['class_99'] = 0.1
+#            print(preds_df.iloc[0])
+            if i_c == 0:
+                preds_df.to_csv('gb_predictions_{0}.csv'.format(name), index=False)
+            else: 
+                preds_df.to_csv('gb_predictions_{0}.csv'.format(name),
+                                header=False, mode='a', index=False)
+            del preds_df
+            gc.collect()
+            
+        del preds_lgb, preds_xgb, preds_comb
+        gc.collect()
+        
 if do_prediction is True:
     import time
-    train_mean = train_full.mean(axis=0)
     del train_full, train_idx
     gc.collect()
     start = time.time()
     chunks = 6000000
-    chunk_last = pd.DataFrame() 
+    chunk_last = pd.DataFrame()
     test_row_num = 453653104 
     total_steps = int(np.ceil(test_row_num/chunks))
     #temporarily remove class 99 since it will predicted separately
@@ -428,12 +477,15 @@ if do_prediction is True:
         del df
         gc.collect()
         full_test = full_test.fillna(train_mean)
-    
+        
+        if i_c == 0:
+            full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved_gb.csv", index=False)
+        else: 
+            full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved_gb.csv",
+                             index=False, header=False, mode='a')
+            
         # Make predictions
         print("Predicting...")
-    #    pred_99 = oneclass.predict(full_test[train_features])
-    #    pred_99[pred_99==1] = 0
-    #    pred_99[pred_99==-1] = 1
         
         preds_lgb = None
         preds_xgb = None
@@ -451,31 +503,21 @@ if do_prediction is True:
                         / len(folds)
                 preds_xgb \
                     += clf_xgb.predict_proba(full_test[train_features]) / len(folds)
-        preds_comb = 0.7*preds_lgb + 0.3*preds_xgb
-#         preds_99 = 0.1 gives 1.769
-#        preds_99 = np.zeros(preds_lgb.shape[0])
-#        for i in range(preds.shape[1]):
-#            preds_99 *= (1 - preds[:, i])
-        
-        #save periods
-#        if i_c == 0:
-#            full_test.to_csv("full_test_saved.csv", index=False)
-#        else: 
-#            full_test.to_csv("full_test_saved.csv",
-#                             index=False, header=False, mode='a')
+        preds_comb = lgb_weight*preds_lgb + (1-lgb_weight)*preds_xgb
+
         # Store predictions
         print("Saving predictions...")
          #create prediction file for each model
 #        for _pred, name in zip([preds_lgb, preds_xgb, preds_comb], ['lgb', 'xgb', 'comb']):
-        for _pred, name in zip([preds_comb], ['comb']):
+        for _pred, name in zip([preds_comb, preds_lgb, preds_xgb], ['comb', 'lgb', 'xgb']):
             preds_df = pd.DataFrame(_pred, columns=[temp_label_features])
             preds_df['object_id'] = full_test['object_id']
             preds_df['class_99'] = 0.1
             
             if i_c == 0:
-                preds_df.to_csv('sfd_predictions_{0}.csv'.format(name), index=False)
+                preds_df.to_csv('gb_predictions_{0}.csv'.format(name), index=False)
             else: 
-                preds_df.to_csv('sfd_predictions_{0}.csv'.format(name),
+                preds_df.to_csv('gb_predictions_{0}.csv'.format(name),
                                 header=False, mode='a', index=False)
             del preds_df
             gc.collect()
@@ -486,7 +528,8 @@ if do_prediction is True:
         if (i_c + 1) % 10 == 0:
             print('%15d done in %5.1f' % (chunks * (i_c + 1), (time.time() - start) / 60))
 
-    model = 'sfd_predictions_comb'
+if do_prediction is True or loaded_test is True:
+    model = 'gb_predictions_comb'
     z = pd.read_csv(model + '.csv')
     
     preds_99 = np.ones(z.shape[0])
@@ -494,23 +537,23 @@ if do_prediction is True:
     no_99.remove('class_99')
     for i in range(z[no_99].values.shape[1]):
         preds_99 *= (1 - z[no_99].values[:, i])
-    z['class_99'] = 0.14 * preds_99 / np.mean(preds_99)
-
+    z['class_99'] = 0.18 * preds_99 / np.mean(preds_99)
+    
     cols = list(z.columns)
     cols.remove('object_id')
-#    z['class_99'] = 1 - z[cols].max(axis=1)
+    #    z['class_99'] = 1 - z[cols].max(axis=1)
     #z = z[['object_id'] + label_features]
-    tech ='_99sc'
-    z.to_csv(model + tech + '.csv', index=False)
+    #tech ='_99sc'
+    #.to_csv(model + tech + '.csv', index=False)
     #label_features_exgal
-#    gal_objs = test_meta_data\
-#                .loc[test_meta_data['hostgal_photoz']==0, 'object_id']
-#    exgal_objs = test_meta_data\
-#            .loc[test_meta_data['hostgal_photoz']>0, 'object_id']
-#    z.loc[z['object_id'].isin(gal_objs), label_features_exgal] = 0
-#    z.loc[z['object_id'].isin(exgal_objs), label_features_gal] = 0
+    gal_objs = test_meta_data\
+                .loc[test_meta_data['hostgal_photoz']==0, 'object_id']
+    exgal_objs = test_meta_data\
+            .loc[test_meta_data['hostgal_photoz']>0, 'object_id']
+    z.loc[z['object_id'].isin(gal_objs), label_features_exgal] = 0
+    z.loc[z['object_id'].isin(exgal_objs), label_features_gal] = 0
     
-    tech ='_sc99'
+    tech ='_scgal'
     z.to_csv(model + tech + '.csv', index=False)
-    
-#    z = pd.read_csv('full_test_saved.csv')
+        
+    #    z = pd.read_csv('full_test_saved.csv')

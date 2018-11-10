@@ -103,7 +103,7 @@ def build_model(dropout_rate=0.25,activation='relu'):
     model.add(BatchNormalization())
     model.add(Dropout(dropout_rate/2))
     
-    model.add(Dense(len(all_classes)-1, activation='softmax'))
+    model.add(Dense(len(all_classes), activation='softmax'))
     return model
 
 #y = train_full['target']
@@ -119,22 +119,24 @@ def build_model(dropout_rate=0.25,activation='relu'):
 #for i in range(14):
 #    wtable[i] = y_count[i]/train_full['target_id'].shape[0]
 
-y = train_full['target']
-unique_y = np.unique(y)
+#y = train_full['target']
+unique_y = all_classes#np.unique(y)
 class_map = dict()
 for i,val in enumerate(unique_y):
     class_map[val] = i
         
-y_map = np.zeros((y.shape[0],))
-y_map = np.array([class_map[val] for val in y])
-y_categorical = to_categorical(y_map)
+y_map = train_full['target_id']#np.zeros((y.shape[0],))
+#y_map = np.array([class_map[val] for val in y])
+ohc = OneHotEncoder(categories=[range(15)])
+ohc.fit(all_clmap_vals.reshape(-1, 1))
+y_categorical = ohc.transform(y_map.values.reshape(-1,1)).toarray()#to_categorical(y_map)
 
 y_count = Counter(y_map)
 wtable = np.zeros((len(unique_y),))
 for i in range(len(unique_y)):
     wtable[i] = y_count[i]/y_map.shape[0]
-    
-def mywloss(y_true,y_pred):  
+wtable[-1] = 1   
+def mywloss(y_true, y_pred):  
     yc=tf.clip_by_value(y_pred,1e-15,1-1e-15)
     loss=-(tf.reduce_mean(tf.reduce_mean(y_true*tf.log(yc),axis=0)/wtable))
     return loss
@@ -168,29 +170,28 @@ train_full[train_features] = ss.fit_transform(train_full[train_features])
 import matplotlib.pyplot as plt
 def plot_loss_acc(history):
     fig, ax = plt.subplots()
-    ax.plot(history.history['loss'][1:])
-    ax.plot(history.history['val_loss'][1:])
+    ax.plot(history.history['loss'][1:], c='b')
+    ax.plot(history.history['val_loss'][1:], c='r')
     plt.title('model loss')
     plt.ylabel('val_loss')
     plt.xlabel('epoch')
     plt.legend(['train','Validation'], loc='upper left')
     plt.show(block=False)
     
-    ax.plot(history.history['acc'][1:])
-    ax.plot(history.history['val_acc'][1:])
+    ax.plot(history.history['acc'][1:], c='b')
+    ax.plot(history.history['val_acc'][1:], c='r')
     plt.title('model Accuracy')
     plt.ylabel('val_acc')
     plt.xlabel('epoch')
     plt.legend(['train','Validation'], loc='upper left')
     plt.show(block=False)
     
-################### LightGBM ########################   
+################### Training ########################   
 nn_list = []
 oof_preds_nn = np.zeros((train_full.shape[0], 15))
 epochs = 600
 batch_size = 100
-checkPoint = ModelCheckpoint("./keras.model",monitor='val_loss',
-                             mode = 'min', save_best_only=True, verbose=0)
+
 early_stopping = EarlyStopping(patience=50, verbose=1)
 for i, (train_idx, cv_idx) in enumerate(folds):
     X_train = train_full[train_features].iloc[train_idx]
@@ -200,11 +201,12 @@ for i, (train_idx, cv_idx) in enumerate(folds):
     print ("\n\n" + "-"*20 + "Fold " + str(i+1) + "-"*20)
     clf_nn = build_model(dropout_rate=0.5,activation='tanh')
     clf_nn.compile(loss=mywloss, optimizer='adam', metrics=['accuracy'])
-    
+    checkPoint = ModelCheckpoint("./keras.model",monitor='val_loss',
+                             mode = 'min', save_best_only=True, verbose=0)
     history = clf_nn.fit(X_train, Y_train,
                     validation_data=[X_cv, Y_cv], 
                     epochs=epochs,
-                    batch_size=batch_size,shuffle=True,verbose=1,
+                    batch_size=batch_size,shuffle=True,verbose=0,
                     callbacks=[checkPoint, early_stopping])
     plot_loss_acc(history)
     
@@ -212,17 +214,65 @@ for i, (train_idx, cv_idx) in enumerate(folds):
     clf_nn.load_weights('./keras.model')
     # since there is no class 15 in train set,
     # the lightgbm will only predict 14 classes
-    oof_preds_nn[cv_idx, :14] \
-        = clf_nn.predict_proba(X_cv, batch_size=batch_size)
+    oof_preds_nn[cv_idx] = clf_nn.predict_proba(X_cv, batch_size=batch_size)
 #    print(multi_weighted_logloss(y_valid, model.predict_proba(x_valid,batch_size=batch_size)))
 
+    print(multiWeightedLoss(train_full['target_id'].iloc[cv_idx],
+                            clf_nn.predict_proba(X_cv,batch_size=batch_size)))
     nn_list.append(clf_nn)
 
-print("NN: {0}".format(multiWeightedLoss(train_full['target_id'], oof_preds_nn)))
+print("NN: {0}".format(multiWeightedLoss(train_full['target_id'],
+                                         oof_preds_nn)))
+for preds, name in zip([oof_preds_nn], ['nn']):
+    df = pd.DataFrame(data=preds, columns=label_features)
+    df['object_id'] = train_full['object_id']
+    df['target_id'] = train_full['target_id']
+    df['target'] = train_full['target']
+    df.to_csv('oof_{0}.csv'.format(name), index=False)
+    
+    
 ######################### #create submission file #############################
+temp_label_features = label_features.copy()
+temp_label_features.remove("class_99")
+if loaded_test is True:
+    chunks = 200000
+    for i_c, full_test in enumerate(pd.read_csv('/media/dslasdoce/Data/Astro/full_test_saved.csv',
+                                         chunksize=chunks, iterator=True)):
+        print("*"*20 + "chunk: " + str(i_c) + "*"*20)
+
+        full_test[train_features] = ss.transform(full_test[train_features])
+        full_test = full_test.reset_index(drop=True)
+        
+        # Make predictions
+        print("Predicting...")
+        preds_nn = None
+        for clf_nn in nn_list:
+            if preds_nn is None:
+                preds_nn = clf_nn.predict_proba(full_test[train_features]) / len(folds)
+            else:
+                preds_nn \
+                    += clf_nn.predict_proba(full_test[train_features]) / len(folds)
+        # Store predictions
+        print("Saving predictions...")
+         #create prediction file for each model
+#        for _pred, name in zip([preds_lgb, preds_xgb, preds_comb], ['lgb', 'xgb', 'comb']):
+        for _pred, name in zip([preds_nn], ['nn']):
+            preds_df = pd.DataFrame(_pred, columns=[label_features])
+            preds_df['object_id'] = full_test['object_id']
+            preds_df['class_99'] = 0.1
+            
+            if i_c == 0:
+                preds_df.to_csv('ld-nn_predictions_{0}.csv'.format(name), index=False)
+            else: 
+                preds_df.to_csv('ld-nn_predictions_{0}.csv'.format(name),
+                                header=False, mode='a', index=False)
+            del preds_df
+            gc.collect()
+            
+    do_prediction = False
+    
 if do_prediction is True:
     import time
-    train_mean = train_full.mean(axis=0)
     del train_full, train_idx
     gc.collect()
     start = time.time()
@@ -231,8 +281,6 @@ if do_prediction is True:
     test_row_num = 453653104 
     total_steps = int(np.ceil(test_row_num/chunks))
     #temporarily remove class 99 since it will predicted separately
-    temp_label_features = label_features.copy()
-    temp_label_features.remove("class_99")
     #del train_full
     for i_c, df in enumerate(pd.read_csv('/media/dslasdoce/Data/Astro/test_set.csv',
                                          chunksize=chunks, iterator=True)):
@@ -252,12 +300,18 @@ if do_prediction is True:
         full_test, train_features = dproc.getFullData(ts_data=df,
                                                       meta_data=test_meta_data)
         del df
-        gc.collect()
+        gc.collect()            
+        
         full_test = full_test.fillna(train_mean)
         full_test[train_features] = full_test[train_features].clip(upper=10000000)
+        if i_c == 0:
+            full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved.csv", index=False)
+        else: 
+            full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved.csv",
+                             index=False, header=False, mode='a')
+        
         full_test[train_features] = ss.transform(full_test[train_features])
         
-    
         # Make predictions
         print("Predicting...")
         
@@ -273,14 +327,14 @@ if do_prediction is True:
          #create prediction file for each model
 #        for _pred, name in zip([preds_lgb, preds_xgb, preds_comb], ['lgb', 'xgb', 'comb']):
         for _pred, name in zip([preds_nn], ['nn']):
-            preds_df = pd.DataFrame(_pred, columns=[temp_label_features])
+            preds_df = pd.DataFrame(_pred, columns=label_features)
             preds_df['object_id'] = full_test['object_id']
             preds_df['class_99'] = 0.1
             
             if i_c == 0:
-                preds_df.to_csv('sfd_predictions_{0}.csv'.format(name), index=False)
+                preds_df.to_csv('nn_predictions_{0}.csv'.format(name), index=False)
             else: 
-                preds_df.to_csv('sfd_predictions_{0}.csv'.format(name),
+                preds_df.to_csv('nn_predictions_{0}.csv'.format(name),
                                 header=False, mode='a', index=False)
             del preds_df
             gc.collect()
@@ -291,7 +345,8 @@ if do_prediction is True:
         if (i_c + 1) % 10 == 0:
             print('%15d done in %5.1f' % (chunks * (i_c + 1), (time.time() - start) / 60))
 
-    model = 'sfd_predictions_nn'
+if do_prediction is True or loaded_test is True:
+    model = 'nn_predictions_nn'
     z = pd.read_csv(model + '.csv')
     
     preds_99 = np.ones(z.shape[0])
@@ -299,14 +354,14 @@ if do_prediction is True:
     no_99.remove('class_99')
     for i in range(z[no_99].values.shape[1]):
         preds_99 *= (1 - z[no_99].values[:, i])
-    z['class_99'] = 0.14 * preds_99 / np.mean(preds_99)
+    z['class_99'] = 0.18 * preds_99 / np.mean(preds_99)
 
     cols = list(z.columns)
     cols.remove('object_id')
 #    z['class_99'] = 1 - z[cols].max(axis=1)
     #z = z[['object_id'] + label_features]
-    tech ='_99sc'
-    z.to_csv(model + tech + '.csv', index=False)
+#    tech ='_99sc'
+#    z.to_csv(model + tech + '.csv', index=False)
 #    label_features_exgal
     gal_classes = train_meta['target'].loc[train_meta['hostgal_specz'] == 0].unique()
     gal_classes = all_classes[np.isin(all_classes, gal_classes)]
@@ -321,7 +376,7 @@ if do_prediction is True:
     z.loc[z['object_id'].isin(gal_objs), label_features_exgal] = 0
     z.loc[z['object_id'].isin(exgal_objs), label_features_gal] = 0
     
-    tech ='_gal'
+    tech ='_scgal'
     z.to_csv(model + tech + '.csv', index=False)
     
 #    z = pd.read_csv('full_test_saved.csv')

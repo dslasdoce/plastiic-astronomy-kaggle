@@ -12,6 +12,8 @@ import pandas as pd
 import numpy as np
 from astropy.stats import LombScargle
 from sklearn.metrics import mean_squared_error
+import cesium.featurize as featurize
+from cesium.time_series import TimeSeries
 
 train = pd.read_csv('training_set.csv')
 train_meta = pd.read_csv('training_set_metadata.csv')
@@ -44,10 +46,61 @@ pb_mapping = {0:'u', 1:'g', 2:'r', 3:'i', 4:'z', 5:'y'}
 ##168952: 
 
 
-target_class = 92
+target_class = 42
 target_object_ids = train_meta.loc[train_meta.target==target_class, 'object_id']
 target_df = train.loc[train.object_id.isin(target_object_ids)]
 models = []
+obj = 615
+df_main = train.loc[(train.object_id==obj)].sort_values('mjd').reset_index(drop=True)
+#df_main = train.loc[(train.object_id==obj) & (train.passband==2)].sort_values('mjd').reset_index(drop=True)
+#for i in range(6):
+#    tmp = df_main.loc[df_main.passband==i, 'flux']
+#    df_main.loc[df_main.passband==i, 'flux'] = (tmp -tmp.mean())/tmp.std()
+#    tmp = df_main.loc[df_main.passband==i, 'flux_err']
+#    df_main.loc[df_main.passband==i, 'flux_err'] = (tmp -tmp.mean())/tmp.std()
+#frequency, power = LombScargle(df_main['mjd'], df_main['flux'],
+#                               dy=df_main['flux_err']).autopower()
+#period = 1/frequency[np.argmax(power)]
+#power = power.mean()
+groups = df_main.groupby('passband')
+t_list = groups.apply(lambda gr: gr['mjd'].values).tolist()
+flx_list = groups.apply(lambda gr: gr['flux'].values).tolist()
+flxer_list = groups.apply(lambda gr: gr['flux_err'].values).tolist()
+#ts = TimeSeries(t=df_main['mjd'], m=df_main['flux'])
+#feats = featurize.featurize_single_ts(ts=ts,
+#                                      features_to_use=['freq1_freq',
+#                                                    'freq1_signif',
+#                                                    'freq1_amplitude1'])
+feats = featurize.featurize_time_series(times=t_list, values=flx_list, errors=flxer_list,
+                                      features_to_use=['freq1_freq'],
+                                                scheduler=None)
+feats.loc['freq1_freq']
+feats.columns = feats.columns.droplevel(1)
+frq = feats['freq1_freq'][0]
+import seaborn as sns
+#sns.scatterplot(x='mjd', y='flux', data=df_main)
+
+#df_main['mjd1'] = df_main['mjd']%period
+#sns.scatterplot(x='mjd1', y='flux', data=df_main.loc[df_main.passband==0 & (df_main.detected==True)])
+
+#periods = len(df_main)/feats['freq1_freq'][0]
+df_main['mjd2'] = (df_main['mjd']*frq) % 1
+#df_main['passband'] = df_main['passband'].astype(str)
+sns.catplot(x='mjd2', y='flux', hue='passband', palette='Set1', data=df_main)
+
+from sklearn import preprocessing
+for i, df in df_main.groupby('passband'):
+    min_max_scaler = preprocessing.MinMaxScaler()
+    df['flux1'] = min_max_scaler.fit_transform(df['flux'].values.reshape(-1,1))
+    df['flux_err1'] = min_max_scaler.fit_transform(df['flux_err'].values.reshape(-1,1))
+    frequency, power = LombScargle(df['mjd'], df['flux1'],
+                               dy=df['flux_err1']).autopower()
+    period = 1/frequency[np.argmax(power)]
+    df['mjd1'] = df['mjd']%period
+    sns.scatterplot(x='mjd1', y='flux1', data=df)
+
+
+
 for i in range(5):
     target_obj = target_object_ids.sample().values[0]
     DFlc = target_df.loc[target_df.object_id==target_obj].copy()
@@ -98,51 +151,22 @@ def passbandToCols(df):
                                  for idx in df.index.tolist()],
                         data=[df.values])
 
+def normalise(ts):
+    return (ts - ts.mean()) / ts.std
 
-#model = LombScargleMultiband(fit_period=True)
-#model.optimizer.set(period_range=(t_min, t_max), first_pass_coverage=5)
-#model.fit(cl_lc['mjd'], cl_lc['flux'], dy=cl_lc['flux_err'], filts=cl_lc['passband'])
-#period = model.best_period
-#magfit = model.predict(cl_lc_test['mjd'], filts=cl_lc_test['passband'])
-
-#from scipy import signal
-#signal.bspline(cl_lc_test['flux'], 2).sum()
-#signal.bspline(cl_lc['flux'], 2).sum()
-
-#class_sample = train_meta[['object_id', 'target']].groupby('target').first()
-#class_sample = class_sample.reset_index()
-#class_sample_t = train_meta[['object_id', 'target']].groupby('target').last()
-#class_sample_t = class_sample_t.reset_index()
-#i = 3
-#cl_lc = train.loc[train['object_id']==class_sample['object_id'].iloc[i]]\
-#        .sort_values('mjd')
-#cl_lc_test = train.loc[train['object_id']==class_sample_t['object_id'].iloc[i]]\
-#        .sort_values('mjd')
-#t_min = max(np.median(np.diff(sorted(cl_lc['mjd']))), 0.1)
-#t_max = min(5., (cl_lc['mjd'].max() - cl_lc['mjd'].min())/2.)
-#import peakutils
-#a = len(peakutils.indexes(cl_lc['flux'].values, thres=0, min_dist=5))/(cl_lc_test['mjd'].max() - cl_lc_test['mjd'].min())
-#b = len(peakutils.indexes(cl_lc_test['flux'].values, thres=0, min_dist=5))/(cl_lc_test['mjd'].max() - cl_lc_test['mjd'].min())
-#
-#from astropy.stats import LombScargle
-#frequency, power = LombScargle(cl_lc['mjd'], cl_lc['flux']).autopower()
-#best_period1 = 1/frequency[np.argmax(power)]
-#
-#frequency, power = LombScargle(cl_lc_test['mjd'], cl_lc_test['flux']).autopower()
-#best_period2 = 1/frequency[np.argmax(power)]
-
-chunks = 100000
-feats = ['period', 'power', 'Eta_e']
-labels = ['object_id']
-for f in feats:
-    for i in range(6):
-        labels.append(f + '--' + str(i))
-        
-for i_c, df in enumerate(pd.read_csv('full_test_saved.csv',
-                                     chunksize=chunks, iterator=True)):
-    if i_c == 0:
-        df[labels].to_csv('calc_feats.csv', index=False)
-    else: 
-        df[labels].to_csv('calc_feats.csv', 
-                          header=False, mode='a', index=False)
-z = pd.read_csv('calc_feats.csv')
+groups = train.groupby(['object_id', 'passband'])
+times = groups.apply(
+    lambda block: block['mjd'].values).reset_index().rename(columns={0: 'seq'})
+flux = groups.apply(
+    lambda block: normalise(block['flux']).values
+).reset_index().rename(columns={0: 'seq'})
+err = groups.apply(
+    lambda block: (block['flux_err'] / block['flux'].std()).values
+).reset_index().rename(columns={0: 'seq'})
+det = groups.apply(
+    lambda block: block['detected'].astype(bool).values
+).reset_index().rename(columns={0: 'seq'})
+times_list = times.groupby('object_id').apply(lambda x: x['seq'].tolist()).tolist()
+flux_list = flux.groupby('object_id').apply(lambda x: x['seq'].tolist()).tolist()
+err_list = err.groupby('object_id').apply(lambda x: x['seq'].tolist()).tolist()
+det_list = det.groupby('object_id').apply(lambda x: x['seq'].tolist()).tolist()
