@@ -19,7 +19,7 @@ target_map, label_features, all_classes, all_class_weights \
     = dproc.getDataParameters()
 
 train_meta, test_meta_data = dproc.getMetaData()
-train = pd.read_csv('training_set.csv')
+train = pd.read_csv('input/training_set.csv')
 train_full, train_features = dproc.getFullData(train, train_meta)
 del train
 gc.collect()
@@ -228,7 +228,7 @@ for preds, name in zip([oof_preds_nn], ['nn']):
     df['object_id'] = train_full['object_id']
     df['target_id'] = train_full['target_id']
     df['target'] = train_full['target']
-    df.to_csv('oof_{0}.csv'.format(name), index=False)
+    df.to_csv('output/oof_{0}.csv'.format(name), index=False)
     
     
 ######################### #create submission file #############################
@@ -262,9 +262,9 @@ if loaded_test is True:
             preds_df['class_99'] = 0.1
             
             if i_c == 0:
-                preds_df.to_csv('ld-nn_predictions_{0}.csv'.format(name), index=False)
+                preds_df.to_csv('output/ld-nn_predictions_{0}.csv'.format(name), index=False)
             else: 
-                preds_df.to_csv('ld-nn_predictions_{0}.csv'.format(name),
+                preds_df.to_csv('output/ld-nn_predictions_{0}.csv'.format(name),
                                 header=False, mode='a', index=False)
             del preds_df
             gc.collect()
@@ -332,9 +332,9 @@ if do_prediction is True:
             preds_df['class_99'] = 0.1
             
             if i_c == 0:
-                preds_df.to_csv('nn_predictions_{0}.csv'.format(name), index=False)
+                preds_df.to_csv('output/nn_predictions_{0}.csv'.format(name), index=False)
             else: 
-                preds_df.to_csv('nn_predictions_{0}.csv'.format(name),
+                preds_df.to_csv('output/nn_predictions_{0}.csv'.format(name),
                                 header=False, mode='a', index=False)
             del preds_df
             gc.collect()
@@ -346,7 +346,7 @@ if do_prediction is True:
             print('%15d done in %5.1f' % (chunks * (i_c + 1), (time.time() - start) / 60))
 
 if do_prediction is True or loaded_test is True:
-    model = 'nn_predictions_nn'
+    model = 'output/nn_predictions_nn'
     z = pd.read_csv(model + '.csv')
     
     preds_99 = np.ones(z.shape[0])

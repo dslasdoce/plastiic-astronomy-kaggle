@@ -15,8 +15,8 @@ from sklearn.metrics import mean_squared_error
 import cesium.featurize as featurize
 from cesium.time_series import TimeSeries
 
-train = pd.read_csv('training_set.csv')
-train_meta = pd.read_csv('training_set_metadata.csv')
+train = pd.read_csv('input/training_set.csv')
+train_meta = pd.read_csv('input/training_set_metadata.csv')
 pb_mapping = {0:'u', 1:'g', 2:'r', 3:'i', 4:'z', 5:'y'}
 #from sklearn import mixture
 #rrlyrae = datasets.fetch_rrlyrae()
@@ -46,7 +46,7 @@ pb_mapping = {0:'u', 1:'g', 2:'r', 3:'i', 4:'z', 5:'y'}
 ##168952: 
 
 
-target_class = 42
+target_class = 52
 target_object_ids = train_meta.loc[train_meta.target==target_class, 'object_id']
 target_df = train.loc[train.object_id.isin(target_object_ids)]
 models = []

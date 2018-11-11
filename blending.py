@@ -47,9 +47,9 @@ train_meta, test_meta_data = dproc.getMetaData()
 
 lgb_weight = 0.5
 
-oof_preds_nn = pd.read_csv('oof_nn.csv')
-oof_preds_lgbm = pd.read_csv('oof_lgbm.csv')
-oof_preds_xgb = pd.read_csv('oof_xgb.csv')
+oof_preds_nn = pd.read_csv('output/oof_nn.csv')
+oof_preds_lgbm = pd.read_csv('output/oof_lgbm.csv')
+oof_preds_xgb = pd.read_csv('output/oof_xgb.csv')
 oof_preds_blend = train_meta[['object_id', 'target_id', 'target']].copy()
 oof_preds_blend[label_features] = (1- lgb_weight)*oof_preds_xgb[label_features] \
                                   +  lgb_weight*oof_preds_lgbm[label_features]
@@ -187,8 +187,8 @@ clf_lst4 = train(oof_preds_blend, train_features, folds)
 do_prediction = True
 if do_prediction is True:
     ################# Load ##################
-    preds_nn = pd.read_csv('nn_predictions_nn.csv')
-    preds_gb = pd.read_csv('gb_predictions_comb.csv')
+    preds_nn = pd.read_csv('output/nn_predictions_nn.csv')
+    preds_gb = pd.read_csv('output/gb_predictions_comb.csv')
     preds_merge = preds_nn.merge(preds_gb, on='object_id', how='inner')
     ################# Prediction ##############
     temp_label_features = label_features.copy()
@@ -203,7 +203,7 @@ if do_prediction is True:
             
     preds_blend = pd.DataFrame(preds_blend, columns=temp_label_features)
     preds_blend['object_id'] = preds_merge['object_id']
-    preds_blend.to_csv('blend.csv', index=False)
+    preds_blend.to_csv('output/blend.csv', index=False)
     ################# Class 99 ##############
     preds_99 = np.ones(preds_blend.shape[0])
     no_99 = label_features.copy()
@@ -230,7 +230,7 @@ if do_prediction is True:
     preds_blend.loc[preds_blend['object_id'].isin(exgal_objs), label_features_gal] = 0
     
     tech ='_scgal'
-    preds_blend.to_csv('blend' + tech + '.csv', index=False)
+    preds_blend.to_csv('output/blend' + tech + '.csv', index=False)
     
     
     

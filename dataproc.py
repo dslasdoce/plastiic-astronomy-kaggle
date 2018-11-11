@@ -235,7 +235,7 @@ def getFullData(ts_data, meta_data):
     return full_data, train_features
 
 def getFullDataFromSaved(ts_data, meta_data):
-    full_data = pd.read_csv('full_train_pb.csv')
+    full_data = pd.read_csv('input/full_train_pb.csv')
     ####################### loaded data up to here #############################
     
     # lc feats per passband and object_id #
@@ -282,8 +282,8 @@ def getFullDataFromSaved(ts_data, meta_data):
     return full_data, train_features
 
 def getMetaData():
-    train_meta = pd.read_csv('training_set_metadata.csv')
-    test_meta_data = pd.read_csv('test_set_metadata.csv')
+    train_meta = pd.read_csv('input/training_set_metadata.csv')
+    test_meta_data = pd.read_csv('input/test_set_metadata.csv')
     
 #    train_meta.loc[train_meta['hostgal_photoz'] == 0, 'is_galactic'] = 1
 #    train_meta.loc[train_meta['hostgal_photoz'] > 0, 'is_galactic'] = 0
@@ -312,14 +312,14 @@ def getMetaData():
     
     #saved extracted features from LC
 #    calc_feats_test
-    lc_feats_train = pd.read_csv('calc_lcfeats_train.csv')
-    lc_feats_test = pd.read_csv('calc_lcfeats_test.csv')
+    lc_feats_train = pd.read_csv('input/calc_lcfeats_train.csv')
+    lc_feats_test = pd.read_csv('input/calc_lcfeats_test.csv')
     train_meta = train_meta.merge(lc_feats_train,
                                   on='object_id', how='left')
     test_meta_data = test_meta_data.merge(lc_feats_test,
                                   on='object_id', how='left')
     
-    train_meta['hostgal_photoz_sq'] = np.power(train_meta['hostgal_photoz_sq'], 2.0)
+#    train_meta['hostgal_photoz_sq'] = np.power(train_meta['hostgal_photoz'], 2.0)
 #    train_meta = train_meta.merge(pd.read_csv('frq.csv'),
 #                                  on='object_id',
 #                                  how='inner')
@@ -374,15 +374,19 @@ if __name__ == "__main__":
     train_meta, test_meta_data = getMetaData()
     
     from sklearn.metrics import confusion_matrix
-    oof_preds_nn = pd.read_csv('oof_nn.csv')
-    oof_preds_lgbm = pd.read_csv('oof_lgbm.csv')
-    oof_preds_xgb = pd.read_csv('oof_xgb.csv')
+    oof_preds_nn = pd.read_csv('output/oof_nn.csv')
+    oof_preds_lgbm = pd.read_csv('output/oof_lgbm.csv')
+    oof_preds_xgb = pd.read_csv('output/oof_xgb.csv')
     
     cnf_matrix_nn = confusion_matrix(train_meta['target_id'],
                                      np.argmax(oof_preds_nn[label_features].values,
                                                axis=-1))
-    plot_confusion_matrix(cnf_matrix_nn, classes=label_features,normalize=True,
+    cnf_matrix_lgb = confusion_matrix(train_meta['target_id'],
+                                     np.argmax(oof_preds_lgbm[label_features].values,
+                                               axis=-1))
+    plot_confusion_matrix(cnf_matrix_lgb, classes=label_features,normalize=True,
                       title='Confusion matrix')
+    plt.show(block=False)
     
     
     
