@@ -249,7 +249,7 @@ label_features_exgal = ['class_' + str(cl) for cl in exgal_classes]
 
 from sklearn.metrics import confusion_matrix
 cnf_matrix_lgb = confusion_matrix(train_meta['target_id'],
-                                     np.argmax(oof_preds_lgbm[label_features].values,
+                                     np.argmax(oof_preds_lgbm,
                                                axis=-1))
 plot_confusion_matrix(cnf_matrix_lgb, classes=label_features,normalize=True,
                   title='Confusion matrix')

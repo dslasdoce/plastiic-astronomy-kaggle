@@ -320,7 +320,7 @@ def getMetaData():
                                   on='object_id', how='left')
     
 #    train_meta['hostgal_photoz_sq'] = np.power(train_meta['hostgal_photoz'], 2.0)
-#    train_meta = train_meta.merge(pd.read_csv('frq.csv'),
+#    train_meta = train_meta.merge(pd.read_csv('input/frq.csv'),
 #                                  on='object_id',
 #                                  how='inner')
     
@@ -452,7 +452,7 @@ if __name__ == "__main__":
 #    for f in flist:
 #        df = pd.concat([pd.read_csv('freqs/' + f), df])
 #        
-#    df.to_csv('frq.csv', index=False)
+#    df.to_csv('input/frq.csv', index=False)
     
     ############################################################################
     #    from time import sleep
