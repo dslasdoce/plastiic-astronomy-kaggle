@@ -25,7 +25,7 @@ target_map, label_features, all_classes, all_class_weights \
 train_meta, test_meta_data = dproc.getMetaData()
 train = pd.read_csv('input/training_set.csv')
 train_full, train_features = dproc.getFullData(train, train_meta)
-del train
+#del train
 gc.collect()
 #train_full[['object_id', 'period']].to_csv("train_periods.csv", index=False)
 #target_id list: will be used in one hot encoding of labels
@@ -127,7 +127,7 @@ from sklearn.model_selection import StratifiedKFold
 def getFolds(ser_target=None, n_splits=5):
     """Returns dataframe indices corresponding to Visitors Group KFold"""
     # Get folds
-    folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=13)
+    folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
 #    idx = np.arange(df.shape[0])
     fold_idx = []
     for train_idx, val_idx in folds.split(X=ser_target, y=ser_target):
@@ -152,7 +152,7 @@ def plot_confusion_matrix(cm, classes,
     else:
         print('Confusion matrix, without normalization')
 
-    print(cm)
+#    print(cm)
     fmt = '.2f' if normalize else 'd'
     
     fig, ax = plt.subplots(figsize=(14,9))
@@ -177,7 +177,7 @@ lgbm_params =  {
     'boosting_type': 'gbdt',
     'objective': 'multiclass',
     'num_class': 14,
-    'metric': ['multi_error'],
+    'metric': ['multi_logloss'],
     "learning_rate": 0.02,
      "num_leaves": 30,
      "max_depth": 6,
@@ -187,8 +187,44 @@ lgbm_params =  {
      "reg_lambda": 0.3,
       "min_split_gain": 0.01,
       "min_child_weight": 0,
-      "n_estimators": 2000
-      }    
+      "n_estimators": 1000
+      } 
+#https://www.kaggle.com/ogrellier/plasticc-in-a-kernel-meta-and-data
+lgbm_params = {
+        'boosting_type': 'gbdt',
+        'objective': 'multiclass',
+        'num_class': 14,
+        'metric': 'multi_logloss',
+        'learning_rate': 0.03,
+        'subsample': .9,
+        'colsample_bytree': .7,
+        'reg_alpha': .01,
+        'reg_lambda': .01,
+        'min_split_gain': 0.01,
+        'min_child_weight': 10,
+        'n_estimators': 1000,
+        'silent': -1,
+        'verbose': -1,
+        'max_depth': 3
+    }
+#https://www.kaggle.com/iprapas/ideas-from-kernels-and-discussion-lb-1-135
+lgbm_params = {
+    'boosting_type': 'gbdt',
+    'objective': 'multiclass',
+    'num_class': 14,
+    'metric': 'multi_logloss',
+    'learning_rate': 0.03,
+    'subsample': .9,
+    'colsample_bytree': 0.5,
+    'reg_alpha': .01,
+    'reg_lambda': .01,
+    'min_split_gain': 0.01,
+    'min_child_weight': 10,
+    'n_estimators': 1000,
+    'silent': -1,
+    'verbose': -1,
+    'max_depth': 3
+}
 
 lgbm_list = []
 oof_preds_lgbm = np.zeros((train_full.shape[0], 15))
@@ -197,7 +233,22 @@ imp_lgb = pd.DataFrame()
 #oof_preds_both = np.zeros((train_full.shape[0], 15))
 #test_prediction = np.zeros((test_meta_data.shape[0], 15))
 train_mean = train_full.mean(axis=0)
+train_full.fillna(train_mean, inplace=True)
 #train_full.fillna(train_mean, inplace=True)
+#fts = ['15decay_std', '15decay_min', '15decay_max', '15decay_mean']
+#for f in fts:
+#    try:
+#        train_features.remove(f)
+#    except:
+#        pass
+#train_features += ['15decay_mean']
+#train_full['cheat'] = 0
+#train_full.loc[train_full['target']==52, 'cheat'] = 1 
+#train_features += ['rd_skew'] #rd_std
+#train_features.remove('rd_std')
+w = train_full['target_id'].value_counts()
+weights = {i : np.sum(w) / w[i] for i in w.index}
+
 for i, (train_idx, cv_idx) in enumerate(folds):
     X_train = train_full[train_features].iloc[train_idx]
     Y_train = train_full['target_id'].iloc[train_idx]
@@ -214,6 +265,7 @@ for i, (train_idx, cv_idx) in enumerate(folds):
         verbose=100,
         eval_metric=lgbMultiWeightedLoss,
         early_stopping_rounds=50,
+        sample_weight=Y_train.map(weights)
     )
     
     imp_df = pd.DataFrame()
@@ -229,9 +281,19 @@ for i, (train_idx, cv_idx) in enumerate(folds):
 
     lgbm_list.append(clf_lgbm)
 
-
 print("LightGBM: {0}".format(multiWeightedLoss(train_full['target_id'],
-                                               oof_preds_lgbm)))
+                                               oof_preds_lgbm[:, :14],
+                                               no_class99=True)))
+############################
+from sklearn.metrics import confusion_matrix
+cnf_matrix_lgb = confusion_matrix(train_meta['target_id'],
+                                     np.argmax(oof_preds_lgbm,
+                                               axis=-1))
+plot_confusion_matrix(cnf_matrix_lgb, classes=label_features,normalize=True,
+                  title='Confusion matrix')
+plt.show(block=False)
+
+###########################
 df = pd.DataFrame(data=oof_preds_lgbm, columns=label_features)
 df['object_id'] = train_full['object_id']
 df['target_id'] = train_full['target_id']
@@ -245,15 +307,8 @@ exgal_classes = all_classes[np.isin(all_classes, exgal_classes)]
 label_features_gal = ['class_' + str(cl) for cl in gal_classes]
 label_features_exgal = ['class_' + str(cl) for cl in exgal_classes]
 
-############################
-
-from sklearn.metrics import confusion_matrix
-cnf_matrix_lgb = confusion_matrix(train_meta['target_id'],
-                                     np.argmax(oof_preds_lgbm,
-                                               axis=-1))
-plot_confusion_matrix(cnf_matrix_lgb, classes=label_features,normalize=True,
-                  title='Confusion matrix')
-plt.show(block=False)
+#sns.heatmap(train_full[train_features].corr())
+#plt.matshow(train_full[train_features].corr())
 
 ######################### #create submission file #############################
 if do_prediction is True:

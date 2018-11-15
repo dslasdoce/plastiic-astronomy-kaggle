@@ -12,3 +12,5 @@ auto_enc\.h5
 data_note\.pdf
 
 *.h5
+
+keras\.model

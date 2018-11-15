@@ -14,7 +14,7 @@ from sklearn.preprocessing import OneHotEncoder
 import lightgbm as lgbm
 import xgboost as xgb
 
-do_prediction = False
+do_prediction = True
 loaded_test = False
 ########################### Data and Parameters Import ##########################
 target_map, label_features, all_classes, all_class_weights \
@@ -38,7 +38,7 @@ for f in calc_feats:
     for i in range(6):
         label_lc_feats.append(f + '--' + str(i))
 ############################# LOSS FUNCTION ####################################
-def multiWeightedLoss(target_class, pred_class, no_class99=False):
+def multiWeightedLoss(target_class, pred_class, no_class99=True):
     #remove class 99
     classes = all_classes.copy()
     cl_vals = all_clmap_vals.copy()
@@ -132,7 +132,7 @@ from sklearn.model_selection import StratifiedKFold
 def getFolds(ser_target=None, n_splits=5):
     """Returns dataframe indices corresponding to Visitors Group KFold"""
     # Get folds
-    folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=13)
+    folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
 #    idx = np.arange(df.shape[0])
     fold_idx = []
     for train_idx, val_idx in folds.split(X=ser_target, y=ser_target):
@@ -142,139 +142,40 @@ def getFolds(ser_target=None, n_splits=5):
 
 folds = getFolds(train_full['target_id'])
 
-
-############################## one class SVM ################################### 
-#test_meta_data = test_meta_data.fillna(0)
-#train_full_svm = train_full.fillna(0)
-
-#import sklearn.svm as svm
-#oneclass = svm.OneClassSVM(kernel='rbf', gamma=0.01, nu=0.05, verbose=True)
-#oneclass.fit(train_full_svm[train_features])
-#del train_full_svm
-#gc.collect()
-###################################### Tuning ##################################
-#from skopt.space import Real, Integer
-#dim_learning_rate = Real(low=1e-6, high=1e-1, prior='log-uniform',name='learning_rate')
-#dim_estimators = Integer(low=50, high=2000,name='n_estimators')
-#dim_max_depth = Integer(low=1, high=6,name='max_depth')
-#
-#dimensions = [dim_learning_rate,
-#              dim_estimators,
-#              dim_max_depth]
-#
-#default_parameters = [0.03,1000,3]
-#
-#def createModel(learning_rate,n_estimators,max_depth):
-#    oof_preds_lgbm = np.zeros((train_full.shape[0], 15))     
-#    for i, (train_idx, cv_idx) in enumerate(folds):
-#        X_train = train_full[train_features].iloc[train_idx]
-#        Y_train = train_full['target_id'].iloc[train_idx]
-#        X_cv = train_full[train_features].iloc[cv_idx]
-#        Y_cv = train_full['target_id'].iloc[cv_idx]
-#        print ("\n\n" + "-"*20 + "Fold " + str(i+1) + "-"*20)
-#        print ("\n" + "*"*10 + "LightGBM" + "*"*10)
-#        
-#        clf_lgbm = lgbm.LGBMClassifier(**lgb_params,learning_rate=learning_rate,
-#                                n_estimators=n_estimators,max_depth=max_depth)
-#        clf_lgbm.fit(
-#            X_train, Y_train,
-#            eval_set=[(X_train, Y_train), (X_cv, Y_cv)],
-#            verbose=False,
-#            eval_metric=lgbMultiWeightedLoss,
-#            early_stopping_rounds=50,
-#        )
-#        
-#        oof_preds_lgbm[cv_idx, :14] \
-#            = clf_lgbm.predict_proba(X_cv, num_iteration=clf_lgbm.best_iteration_)
-#    
-##        lgbm_list.append(clf_lgbm)
-#    
-#    loss = multiWeightedLoss(train_full['target_id'], oof_preds_lgbm)
-#    print('MULTI WEIGHTED LOG LOSS : %.5f ' % loss)
-#    
-#    return loss
-#
-#from skopt.utils import use_named_args
-#@use_named_args(dimensions=dimensions)
-#def fitness(learning_rate,n_estimators,max_depth):
-#    """
-#    Hyper-parameters:
-#    learning_rate:     Learning-rate for the optimizer.
-#    n_estimators:      Number of estimators.
-#    max_depth:         Maximum Depth of tree.
-#    """
-#
-#    # Print the hyper-parameters.
-#    print('learning rate: {0:.2e}'.format(learning_rate))
-#    print('estimators:', n_estimators)
-#    print('max depth:', max_depth)
-#    
-#    lv= createModel(learning_rate=learning_rate,
-#                    n_estimators=n_estimators,
-#                    max_depth = max_depth)
-#    return lv
-#          
-#lgb_params = {
-#    'boosting_type': 'gbdt',
-#    'objective': 'multiclass',
-#    'num_class': 14,
-#    'metric': 'multi_logloss',
-#    'subsample': .9,
-#    'colsample_bytree': .7,
-#    'reg_alpha': .01,
-#    'reg_lambda': .01,
-#    'min_split_gain': 0.01,
-#    'min_child_weight': 10,
-#    'silent':True,
-#    'verbosity':-1,
-#    'nthread':-1
-#}
-#from skopt import gp_minimize
-#
-#search_result = gp_minimize(func=fitness,
-#                            dimensions=dimensions,
-#                            acq_func='EI', # Expected Improvement.
-#                            n_calls=20,
-#                           x0=default_parameters)
-#import sys
-#sys.exit()
-#learning_rate = search_result.x[0]
-#n_estimators = search_result.x[1]
-#max_depth = search_result.x[2]
 ################### LightGBM ########################
-lgbm_params =  {
-    'task': 'train',
+lgbm_params = {
     'boosting_type': 'gbdt',
     'objective': 'multiclass',
     'num_class': 14,
-    'metric': ['multi_error'],
-    "learning_rate": 0.02,
-     "num_leaves": 30,
-     "max_depth": 6,
-     "feature_fraction": 0.45,
-     "bagging_fraction": 0.3,
-     "reg_alpha": 0.3,
-     "reg_lambda": 0.3,
-      "min_split_gain": 0.01,
-      "min_child_weight": 0,
-      "n_estimators": 2000
-      }
+    'metric': 'multi_logloss',
+    'learning_rate': 0.03,
+    'subsample': .9,
+    'colsample_bytree': 0.5,
+    'reg_alpha': .1,
+    'reg_lambda': .1,
+    'min_split_gain': 0.01,
+    'min_child_weight': 10,
+    'n_estimators': 1000,
+    'silent': -1,
+    'verbose': -1,
+    'max_depth': 3
+}
 
 xgb_params =  {
     'task': 'train',
     'boosting_type': 'gbdt',
     'objective': 'multiclass',
-    'num_class': 15,
-    'metric': ['multi_error'],
+    'num_class': 14,
+    'metric': ['multi_logloss'],
     "learning_rate": 0.05,
      "num_leaves": 30,
-     "max_depth": 6,
+     "max_depth": 3,
      "feature_fraction": 0.45,
      "bagging_fraction": 0.3,
-     "reg_alpha": 0.3,
-     "reg_lambda": 0.3,
+     "reg_alpha": 0.1,
+     "reg_lambda": 0.1,
       "min_split_gain": 0.01,
-      "min_child_weight": 0,
+      "min_child_weight": 10,
       "n_estimators": 1000
       }      
 
@@ -287,8 +188,9 @@ imp_xgb = pd.DataFrame()
 #oof_preds_both = np.zeros((train_full.shape[0], 15))
 #fill na
 train_mean = train_full.mean(axis=0)
-#train_full.fillna(train_mean, inplace=True)
-
+train_full.fillna(train_mean, inplace=True)
+w = train_full['target_id'].value_counts()
+weights = {i : np.sum(w) / w[i] for i in w.index}
 #train
 for i, (train_idx, cv_idx) in enumerate(folds):
     X_train = train_full[train_features].iloc[train_idx]
@@ -305,6 +207,7 @@ for i, (train_idx, cv_idx) in enumerate(folds):
         verbose=100,
         eval_metric=xgbMultiWeightedLoss,
         early_stopping_rounds=50,
+        sample_weight=Y_train.map(weights)
     )
     imp_df = pd.DataFrame()
     imp_df['feature'] = train_features
@@ -321,6 +224,7 @@ for i, (train_idx, cv_idx) in enumerate(folds):
         verbose=100,
         eval_metric=lgbMultiWeightedLoss,
         early_stopping_rounds=50,
+        sample_weight=Y_train.map(weights)
     )
     
     imp_df = pd.DataFrame()
@@ -340,14 +244,13 @@ for i, (train_idx, cv_idx) in enumerate(folds):
     xgb_list.append(clf_xgb)
 
 print("LightGBM: {0}".format(multiWeightedLoss(train_full['target_id'],
-                                               oof_preds_lgbm)))
+                                               oof_preds_lgbm[:, :14])))
 print("XGBoost: {0}".format(multiWeightedLoss(train_full['target_id'],
-                                              oof_preds_xgb)))
-
+                                              oof_preds_xgb[:, :14])))
 lgb_weight = 0.5
 oof_preds_comb = lgb_weight*oof_preds_lgbm + (1-lgb_weight)*oof_preds_xgb
 print("Combined: {0}".format(multiWeightedLoss(train_full['target_id'],
-                                               oof_preds_comb)))
+                                               oof_preds_comb[:, :14])))
 
 #save oof
 for preds, name in zip([oof_preds_lgbm, oof_preds_xgb], ['lgbm', 'xgb']):
@@ -446,10 +349,11 @@ if loaded_test is True:
         
 if do_prediction is True:
     import time
-    del train_full, train_idx
+    del train_full, train_idx, oof_preds_comb, oof_preds_lgbm, oof_preds_xgb, train_meta
+    del X_cv, X_train, Y_cv, Y_train, z, preds
     gc.collect()
     start = time.time()
-    chunks = 6000000
+    chunks = 3000000
     chunk_last = pd.DataFrame()
     test_row_num = 453653104 
     total_steps = int(np.ceil(test_row_num/chunks))
@@ -461,6 +365,7 @@ if do_prediction is True:
                                          chunksize=chunks, iterator=True)):
         #make sure object_ids do not get separated
         print("*"*20 + "chunk: " + str(i_c) + "*"*20)
+
         df = pd.concat([chunk_last, df], ignore_index=True)
         if i_c+1<total_steps:
             #get the last object id
@@ -471,10 +376,13 @@ if do_prediction is True:
             chunk_last = df[mask_last] 
             #remove the rows of the last object_id from the dataset
             df = df[~mask_last]
-        
+        if i_c <52:
+            del mask_last, df
+            continue
+        gc.collect()
         full_test, train_features = dproc.getFullData(ts_data=df,
                                                       meta_data=test_meta_data)
-        del df
+        del df, mask_last
         gc.collect()
         full_test = full_test.fillna(train_mean)
         
@@ -522,14 +430,14 @@ if do_prediction is True:
             del preds_df
             gc.collect()
             
-        del preds_lgb, preds_xgb, preds_comb
+        del preds_lgb, preds_xgb, preds_comb, full_test
         gc.collect()
         
         if (i_c + 1) % 10 == 0:
             print('%15d done in %5.1f' % (chunks * (i_c + 1), (time.time() - start) / 60))
 
 if do_prediction is True or loaded_test is True:
-    model = 'output/gb_predictions_comb'
+    model = 'output/gb_predictions_lgb'
     z = pd.read_csv(model + '.csv')
     
     preds_99 = np.ones(z.shape[0])

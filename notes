@@ -42,27 +42,55 @@ Amplitude - 0.8730396885386367
 AndersonDarling - 8942799762991649 (x)
 Autocor_length - 0.8738912955568754
 Beyond1Std - 0.8709337786937938
+CAR_mean - 
 CAR_sigma - (too long to calculate)
+CAR_tau - 
+Color - 
 Con - error
 Eta_e - 0.8528716360904305
+FluxPercentileRatioMid20 - error
+FluxPercentileRatioMid35 - 
 FluxPercentileRatioMid50 - having error
+FluxPercentileRatioMid65 - 
+FluxPercentileRatioMid80 - 
 Freq{i}_harmonics_amplitude_{j}	- 
 Gskew - .89 (x)
 LinearTrend - 0.8888419089070486
 MaxSlope - 0.8769868977560489
+Meanvariance - 
+MedianAbsDev - 
+MedianBRP - 
+PairSlopeTrend - 
+PercentAmplitude - 
+PercentDifferenceFluxPercentile - 
+PeriodLS - 
+Period_fit - 
 Psi_CS - 
 Psi_eta - 
 Q31 - 0.8654759745037496
+Rcs -
 SlottedA_length - 0.868152325544615
 SmallKurtosis - 
+StetsonK - 
+StetsonK_AC - 
 StructureFunction_index_21 - 8551423800772618
+StructureFunction_index_31 - 
+StructureFunction_index_32 - 
 
 
 #################
-0.845852914340298
+obj
+LightGBM: 0.662124956514557
+XGBoost: 0.6783342120647428
+Combined: 0.663607069659719
+NN: 0.82
+obj,pb - 
 
 
-
+todo
+lgbm - 656069274327166
+flux_min - mwebv *
+distance from earth using redshift and coordinates *
 
 
 

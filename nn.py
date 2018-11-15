@@ -20,7 +20,7 @@ target_map, label_features, all_classes, all_class_weights \
 
 train_meta, test_meta_data = dproc.getMetaData()
 train = pd.read_csv('input/training_set.csv')
-train_full, train_features = dproc.getFullData(train, train_meta)
+train_full, train_features = dproc.getFullData(train, train_meta, perpb=True)
 del train
 gc.collect()
 #train_full[['object_id', 'period']].to_csv("train_periods.csv", index=False)
@@ -35,7 +35,7 @@ for f in calc_feats:
     for i in range(6):
         label_lc_feats.append(f + '--' + str(i))
 ############################# LOSS FUNCTION ####################################
-def multiWeightedLoss(target_class, pred_class, no_class99=False):
+def multiWeightedLoss(target_class, pred_class, no_class99=True):
     #remove class 99
     classes = all_classes.copy()
     cl_vals = all_clmap_vals.copy()
@@ -218,11 +218,11 @@ for i, (train_idx, cv_idx) in enumerate(folds):
 #    print(multi_weighted_logloss(y_valid, model.predict_proba(x_valid,batch_size=batch_size)))
 
     print(multiWeightedLoss(train_full['target_id'].iloc[cv_idx],
-                            clf_nn.predict_proba(X_cv,batch_size=batch_size)))
+                            clf_nn.predict_proba(X_cv,batch_size=batch_size)[:, :14]))
     nn_list.append(clf_nn)
 
 print("NN: {0}".format(multiWeightedLoss(train_full['target_id'],
-                                         oof_preds_nn)))
+                                         oof_preds_nn[:, :14])))
 for preds, name in zip([oof_preds_nn], ['nn']):
     df = pd.DataFrame(data=preds, columns=label_features)
     df['object_id'] = train_full['object_id']
@@ -240,6 +240,8 @@ if loaded_test is True:
                                          chunksize=chunks, iterator=True)):
         print("*"*20 + "chunk: " + str(i_c) + "*"*20)
 
+        full_test = full_test.fillna(train_mean)
+        full_test[train_features] = full_test[train_features].clip(upper=10000000)
         full_test[train_features] = ss.transform(full_test[train_features])
         full_test = full_test.reset_index(drop=True)
         
@@ -300,16 +302,16 @@ if do_prediction is True:
         full_test, train_features = dproc.getFullData(ts_data=df,
                                                       meta_data=test_meta_data)
         del df
-        gc.collect()            
+        gc.collect()        
         
-        full_test = full_test.fillna(train_mean)
-        full_test[train_features] = full_test[train_features].clip(upper=10000000)
         if i_c == 0:
             full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved.csv", index=False)
         else: 
             full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved.csv",
                              index=False, header=False, mode='a')
-        
+            
+        full_test = full_test.fillna(train_mean)
+        full_test[train_features] = full_test[train_features].clip(upper=10000000)
         full_test[train_features] = ss.transform(full_test[train_features])
         
         # Make predictions

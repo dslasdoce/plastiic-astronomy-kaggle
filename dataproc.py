@@ -22,8 +22,10 @@ target_map = {6: 0, 15:1, 16:2, 42:3, 52: 4, 53: 5, 62: 6, 64: 7,
               65: 8, 67: 9, 88: 10, 90: 11, 92: 12, 95: 13, 99: 14}
 target_map = dict(sorted(target_map.items(), key=operator.itemgetter(1)))
 excluded_features = ['target', 'target_id', 'y', 'object_id', 'passband',
-                     'hostgal_specz', 'distmod']#, 'ra', 'decl', 'gal_l', 'gal_b',
-                     #'ddf']
+                     'hostgal_specz', 'distmod','index',
+                     'ra', 'decl',
+                     'gal_l', 'gal_b',
+                     'ddf']
 excluded_features += []
     
 def getDataParameters():
@@ -46,7 +48,7 @@ try:
     ft = sys.argv[1]
 except IndexError:
     print("using default feets")
-    ft = ['Beyond1Std']
+    ft = ['Eta_e', 'LinearTrend', 'MaxSlope', 'Q31', 'StructureFunction_index_21']
 #    ft = ['Eta_e', 'Amplitude', 'Autocor_length', 'Beyond1Std']
 fs = feets.FeatureSpace(only=ft)
 print(ft)
@@ -143,30 +145,61 @@ def passbandToCols(df):
     return pd.DataFrame(columns=["{0}--{1}".format(idx[0], idx[1])\
                                  for idx in df.index.tolist()],
                         data=[df.values])
-
-def getFullData(ts_data, meta_data):
-    aggs = {'mjd': ['size'],
-            'flux': ['min', 'max', 'mean', 'median', 'std', 'size', 'skew'],
+from tsfresh.feature_extraction import extract_features   
+def getFullData(ts_data, meta_data, perpb=False):
+    aggs = {'flux': ['min', 'max', 'mean', 'median', 'std', 'size', 'skew'],
             'flux_err': ['min', 'max', 'mean', 'median', 'std', 'skew'],
             'detected': ['mean'],
             'flux_ratio_sq': ['sum', 'skew'],
-            'flux_by_flux_ratio_sq': ['sum']}
+            'flux_by_flux_ratio_sq': ['sum'],
+            'amag' : ['min', 'max', 'mean', 'std', 'skew']}
     
     ts_data['flux_ratio_sq'] = np.power(ts_data['flux'] / ts_data['flux_err'], 2.0)
     ts_data['flux_by_flux_ratio_sq'] = ts_data['flux'] * ts_data['flux_ratio_sq']
+    
+#    period_df = meta_data[['object_id', 'period--0', 'period--1', 'period--2',
+#                     'period--3', 'period--4', 'period--5']]\
+#        .set_index('object_id').unstack().reset_index()
+#    period_map = {k: int(k.split('--')[1]) for k in ['period--' + str(i) for i in range(6)]}
+#    period_df.columns = ['passband', 'object_id', 'period']
+#    period_df['passband'] = period_df['passband'].map(period_map)
+#    ts_data = ts_data.merge(period_df, on=['object_id', 'passband'], how='inner')
+#    ts_data['mjd'] = ts_data['mjd']%ts_data['period']
+#    ts_data = ts_data.groupby(['object_id', 'passband', 'mjd']).mean().reset_index()
 
+#    
+#    vmag = {0: 1.810, 1:3.730, 2:4.490, 3:4.760, 4:4.810, 5: 1.600}
+#    ts_data['amag'] = ts_data['passband'].map(vmag)
+#    ts_data['amag'] = np.power(10, ts_data['flux']/-2.15)*ts_data['amag']
+#    ts_data.loc[ts_data['flux'] < 0, 'flux_adj'] = 0
+#    ts_data['vmag'] = -2.5*np.log10(abs(ts_data['flux_adj']/ts_data['vmag']))
+    ts_data = ts_data.merge(meta_data[['hostgal_photoz', 'mwebv',
+                                       'object_id']], on='object_id', how='left')
+    ts_data['amag'] = np.power(ts_data['hostgal_photoz'], 2)*4*np.pi* ts_data['flux']
+#    ts_data['amag'] = ts_data['flux'] - ts_data['distmod'] - ts_data['mwebv']
+#    ts_data['amag'] = np.power(10, (ts_data['vmag'] - np.log10(abs(ts_data['flux']) + 1) - ts_data['mwebv'])/5) + 1
+#    ts_data['br'] = np.power(10, 0.4*ts_data['flux'])
+#    ts_data['rd'] = 1/np.power(ts_data['flux']*np.power(1+ts_data['hostgal_photoz'], 2), 0.5)
     #feature aggregation per passband
-    full_data = ts_data.groupby(['object_id','passband']).agg(aggs)
+    if perpb is True:
+        full_data = ts_data.groupby(['object_id','passband']).agg(aggs) #orig
+    else:
+        full_data = ts_data.groupby(['object_id']).agg(aggs)
     new_columns = [
         k + '_' + agg for k in aggs.keys() for agg in aggs[k]
     ]
     full_data.columns = new_columns
     full_data = full_data.reset_index()
-
-    full_data['flux_standard_err']\
-        = full_data['flux_mean']/np.sqrt(full_data['flux_size'])
-    del full_data['flux_size']
     
+    full_data['flux_diff'] = full_data['flux_max'] - full_data['flux_min']
+    full_data['flux_dif2'] = (full_data['flux_max'] - full_data['flux_min'])\
+                             / full_data['flux_mean']
+    full_data['flux_w_mean'] = full_data['flux_by_flux_ratio_sq_sum']\
+                               / full_data['flux_ratio_sq_sum']
+    full_data['flux_dif3'] = (full_data['flux_max'] - full_data['flux_min'])\
+                             / full_data['flux_w_mean']
+    
+#    full_data['amp'] = full_data['flux_max'] - full_data['flux_min']
     ####################### loaded data up to here #############################
     #period calculation if period is per passband
 #    period_df = ts_data.groupby(['object_id', 'passband'])\
@@ -180,22 +213,53 @@ def getFullData(ts_data, meta_data):
 #    full_data = full_data.merge(lc_feats, how='left',
 #                                on=['object_id', 'passband'])
     
+    ############################################################################
     # make values for each column VS passband a separate column
     # e.g. period of passband 1 becomes period-1 column then passband column is omitted
-    full_data = full_data.groupby('object_id').apply(passbandToCols)
+    if perpb is True:
+        full_data = full_data.groupby('object_id').apply(passbandToCols) #orig
     #bring back the object_id column but not the passband
     full_data = full_data.reset_index(level=0).reset_index(drop=True)
-    full_data = full_data.merge(
-        right=meta_data,
-        how='left',
-        on='object_id'
-    )
-    del full_data['distmod']#, full_data['hostgal_specz']
+    gc.collect()
+    
+    ############################
+    fcp = {'fft_coefficient': [{'coeff': 0, 'attr': 'abs'},
+                               {'coeff': 1, 'attr': 'abs'}],
+           'kurtosis' : None, 'skewness' : None}
+    agg_df_ts = extract_features(ts_data, column_id='object_id', column_sort='mjd',
+                                     column_kind='passband', column_value='flux',
+                                     default_fc_parameters=fcp, n_jobs=2)\
+                .reset_index()
+    agg_df_ts = agg_df_ts.rename({'id':'object_id'}, axis=1)
+    full_data = full_data.merge(agg_df_ts, how='left', on='object_id')
+    del agg_df_ts
+    gc.collect()
+    ###########################
+#    df_15decay = ts_data.groupby(['object_id','passband']).apply(get15decay).reset_index()
+#    df_15decay = ts_data.groupby(['object_id','passband']).apply(getMax).reset_index()
+    
+#    aggs = {'15decay': ['min', 'max', 'mean', 'std']}
+#    df_15decay = df_15decay.groupby('object_id').agg(aggs)
+#    new_columns = [
+#            k + '_' + agg for k in aggs.keys() for agg in aggs[k]
+#        ]
+#    df_15decay.columns = new_columns
+#    full_data = full_data.merge(df_15decay, how='left', on='object_id')   
+    
+    ############################################################################
+    #lc feats per passband and object_id #
+#    lc_feats = ts_data.groupby(['object_id']).apply(lcFeaturesEx).reset_index()
+#    aggs = {'Beyond1Std': ['min', 'max', 'mean', 'std']}
+#    lc_feats = lc_feats.groupby('object_id').agg(aggs)
+#    new_columns = [
+#            k + '_' + agg for k in aggs.keys() for agg in aggs[k]
+#        ]
+#    lc_feats.columns = new_columns
+
+#    full_data = full_data.merge(lc_feats, how='left', on='object_id')
     
     ############################################################################
     aggs = {'flux_by_flux_ratio_sq': ['skew']}
-    
-    ts_data['flux_ratio_sq'] = np.power(ts_data['flux'] / ts_data['flux_err'], 2.0)
     ts_data['flux_by_flux_ratio_sq'] = ts_data['flux'] * ts_data['flux_ratio_sq']
 
     #feature aggregation per passband
@@ -205,48 +269,10 @@ def getFullData(ts_data, meta_data):
     ]
     full_data2.columns = new_columns
     full_data2 = full_data2.reset_index()
-
-#    full_data2['flux_standard_err']\
-#        = full_data2['flux_mean']/np.sqrt(full_data2['flux_size'])
-#    del full_data2['flux_size']
     full_data = full_data.merge(full_data2, how='left', on='object_id')    
-    ############################################################################
-    
-
-    
-    #######################################
-#     detected-based mjd length feature for each object id only
-    z = ts_data.loc[ts_data.detected==1].groupby('object_id')\
-            .apply(lambda df: pd.Series({'mjd_det': max(df.mjd) - min(df.mjd)}))\
-            .reset_index()
-    full_data = full_data.merge(z, how='left', on='object_id')    
-    
-    ################## frequency
-#    freq = ts_data.groupby(['object_id']).apply(lcFreq).reset_index()
-#    full_data = full_data.merge(period_df, how='left',
-#                                on=['object_id', 'passband'])
-    
-    train_features = [f for f in full_data.columns if f not in excluded_features]
-    
-    
-
-#    del agg_ts
+    del full_data2
     gc.collect()
-    return full_data, train_features
-
-def getFullDataFromSaved(ts_data, meta_data):
-    full_data = pd.read_csv('input/full_train_pb.csv')
-    ####################### loaded data up to here #############################
-    
-    # lc feats per passband and object_id #
-    lc_feats = ts_data.groupby(['object_id', 'passband'])\
-                .apply(lcFeaturesEx).reset_index()
-    full_data = full_data.merge(lc_feats, how='left',
-                                on=['object_id', 'passband'])
-    
-    full_data = full_data.groupby('object_id').apply(passbandToCols)
-    #bring back the object_id column but not the passband
-    full_data = full_data.reset_index(level=0).reset_index(drop=True)
+    ############################################################################
     full_data = full_data.merge(
         right=meta_data,
         how='left',
@@ -255,49 +281,52 @@ def getFullDataFromSaved(ts_data, meta_data):
     del full_data['distmod']#, full_data['hostgal_specz']
     
     #######################################
+#     detected-based mjd length feature for each object id only
     z = ts_data.loc[ts_data.detected==1].groupby('object_id')\
             .apply(lambda df: pd.Series({'mjd_det': max(df.mjd) - min(df.mjd)}))\
             .reset_index()
     full_data = full_data.merge(z, how='left', on='object_id')
+    
+    ################## frequency
+#    freq = ts_data.groupby(['object_id']).apply(lcFreq).reset_index()
+#    full_data = full_data.merge(period_df, how='left',
+#                                on=['object_id', 'passband'])
 
-#    #lc feats per object_id
-#    lc_feats = ts_data.groupby(['object_id', 'passband'])\
-#                .apply(lcFeaturesEx).reset_index()\
-#                .groupby('object_id').mean().reset_index()
-#    full_data = full_data.merge(lc_feats, how='left',
-#                                on=['object_id'])
-#    del full_data['passband']
+################## redshift calibration 
+#    flx = ['flux_mean--' + str(i) for i in range(6)]
+#    full_data['new'] = full_data['flux_mean']/np.power(full_data['hostgal_photoz'] + 1, 2)
+#    aggs = {'flux': ['mean']}
+#    full_data['new'] = 1/np.power(full_data['flux_ratio_sq_sum']*np.power(1+full_data['hostgal_photoz'], 2), 0.5)
+#    excluded_features += flx
+#    del full_data[flx]
+#    for f in flx:
+#        full_data['dist-' + f] = 1/np.power(full_data[f]*np.power(1+full_data['hostgal_photoz'], 2), 0.5)
+#        del full_data[f]    
     
-#    lc_feats = ts_data.groupby('object_id')\
-#                .apply(lcFeaturesEx).reset_index()
-#    full_data = full_data.merge(lc_feats, how='left',
-#                                on=['object_id'])
-#    del full_data['passband']
-    
-    
+############## feature interactions
+#    full_data['correction_diff'] = full_data['flux_min'] - full_data['mwebv']
     train_features = [f for f in full_data.columns if f not in excluded_features]
-
 #    del agg_ts
     gc.collect()
     return full_data, train_features
 
+def col_index(cidx):
+    if cidx > -0.17 and cidx < 0.15:
+        return 0
+    elif cidx >= 0.15 and cidx < 0.44:
+        return 1
+    elif cidx >= 0.44 and cidx < 0.68:
+        return 2
+    elif cidx >= 0.68 and cidx < 1.15:
+        return 3
+    elif cidx >= 1.15 and cidx < 1.64:
+        return 4
+    else:
+        return 5
+        
 def getMetaData():
     train_meta = pd.read_csv('input/training_set_metadata.csv')
     test_meta_data = pd.read_csv('input/test_set_metadata.csv')
-    
-#    train_meta.loc[train_meta['hostgal_photoz'] == 0, 'is_galactic'] = 1
-#    train_meta.loc[train_meta['hostgal_photoz'] > 0, 'is_galactic'] = 0
-#    
-#    test_meta_data.loc[test_meta_data['hostgal_photoz'] == 0, 'is_galactic'] = 1
-#    test_meta_data.loc[test_meta_data['hostgal_photoz'] > 0, 'is_galactic'] = 0
-    
-    #period merging to meta data if period is calculated as average
-#    train_periods = pd.read_csv('train_periods_saved.csv')
-#    test_periods = pd.read_csv('test_periods_saved.csv')
-#    train_meta = train_meta.merge(train_periods,
-#                                  on='object_id', how='left')
-#    test_meta_data = test_meta_data.merge(test_periods,
-#                                  on='object_id', how='left')
     
     #mjd_det saved
 #    mjd_det = pd.read_csv('mjd_det.csv')
@@ -319,11 +348,42 @@ def getMetaData():
     test_meta_data = test_meta_data.merge(lc_feats_test,
                                   on='object_id', how='left')
     
+#    points = [[169*(np.pi/180), 60*(np.pi/180)],
+#              [225*(np.pi/180), 54*(np.pi/180)], #
+#              [236*(np.pi/180), 42*(np.pi/180)], #
+#              [320*(np.pi/180), 50*(np.pi/180)],#
+#              [329*(np.pi/180), 68*(np.pi/180)]]#
+#    points = [[169*(np.pi/180), 60*(np.pi/180)]]
+#    for i, p in enumerate(points):
+#        lmbda1 = p[0]
+#        phi1 = p[1]
+#        phi = train_meta['gal_b'] * (np.pi/180)
+#        lmbda = train_meta['gal_l'] * (np.pi/180)
+#        train_meta['d-p' + str(i)]\
+#            = 2*np.arcsin(np.power(np.power(np.sin((phi-phi1)/2), 2)\
+#                                   + np.cos(lmbda)*np.cos(lmbda1)\
+#                                     * np.power(np.sin((lmbda-lmbda1)/2), 2),
+#                                   0.5))
+#        
+#    d0 = 63 * (np.pi/180)
+#    a0 = 350 * (np.pi/180)
+#    delta = train_meta['decl']*(np.pi/180)
+#    alpha = train_meta['ra']*(np.pi/180)
+#    x = np.cos(delta)*np.cos(alpha)
+#    y = np.cos(delta)*np.sin(alpha)
+#    x0 = np.cos(d0)*np.cos(a0)
+#    y0 = np.cos(d0)*np.sin(a0)
+#    train_meta['d_sky'] = np.sqrt(np.square(x-x0) + np.square(y-y0))
+#    train_meta['d_sky'] = np.sqrt(np.square(x) + np.square(y) + np.square(train_meta['hostgal_photoz']))
+    
+#    train_meta['c_index'] = train_meta['mwebv'].map(col_index)
+#    train_meta['gal_pyt2'] = np.power(np.power(train_meta['gal_l'], 2) + np.power(train_meta['gal_b'], 2), 0.5)
+#    train_meta['gal_pyt'] = np.power(np.power(train_meta['decl'], 2) + np.power(train_meta['ra'], 2), 0.5)
 #    train_meta['hostgal_photoz_sq'] = np.power(train_meta['hostgal_photoz'], 2.0)
 #    train_meta = train_meta.merge(pd.read_csv('input/frq.csv'),
 #                                  on='object_id',
 #                                  how='inner')
-    
+#    train_meta['hostgal_photoz_sq'] = np.power(train_meta['hostgal_photoz']/(train_meta['hostgal_photoz_err']+1), 2.0)
 #    from sklearn.neighbors import KernelDensity
 #    kde = KernelDensity(bandwidth=0.5).fit(train_meta['mwebv'].values.reshape(-1,1))
 #    train_meta['logdens'] = kde.score_samples(train_meta['mwebv'].values.reshape(-1,1))
@@ -331,6 +391,7 @@ def getMetaData():
     return train_meta, test_meta_data
 
 #    return full_data, train_features
+    
 import matplotlib.pyplot as plt
 import itertools
 import seaborn as sns
@@ -383,6 +444,9 @@ if __name__ == "__main__":
                                                axis=-1))
     cnf_matrix_lgb = confusion_matrix(train_meta['target_id'],
                                      np.argmax(oof_preds_lgbm[label_features].values,
+                                               axis=-1))
+    cnf_matrix_xgb = confusion_matrix(train_meta['target_id'],
+                                     np.argmax(oof_preds_xgb[label_features].values,
                                                axis=-1))
     plot_confusion_matrix(cnf_matrix_lgb, classes=label_features,normalize=True,
                       title='Confusion matrix')
