@@ -20,7 +20,7 @@ target_map, label_features, all_classes, all_class_weights \
 
 train_meta, test_meta_data = dproc.getMetaData()
 train = pd.read_csv('input/training_set.csv')
-train_full, train_features = dproc.getFullData(train, train_meta, perpb=True)
+train_full, train_features = dproc.getFullData(train, train_meta, perpb=False)
 del train
 gc.collect()
 #train_full[['object_id', 'period']].to_csv("train_periods.csv", index=False)

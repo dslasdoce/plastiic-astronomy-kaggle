@@ -160,8 +160,8 @@ preds_all.to_csv('predictions_comb_naive_dau.csv', index=False)
 
 
 preds_nn = pd.read_csv('output/nn_predictions_nn_scgal.csv')
-preds_lgbm = pd.read_csv('output/gb_predictions_comb_scgal.csv')
+preds_lgbm = pd.read_csv('output/gb_predictions_lgb_scgal.csv')
 preds_blend = preds_nn
-preds_blend[label_features] = 0.5*preds_blend[label_features] + 0.5*preds_lgbm[label_features]
+preds_blend[label_features] = 0.4*preds_blend[label_features] + 0.6*preds_lgbm[label_features]
 
 preds_blend.to_csv('blend.csv', index=False)

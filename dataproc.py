@@ -156,16 +156,6 @@ def getFullData(ts_data, meta_data, perpb=False):
     
     ts_data['flux_ratio_sq'] = np.power(ts_data['flux'] / ts_data['flux_err'], 2.0)
     ts_data['flux_by_flux_ratio_sq'] = ts_data['flux'] * ts_data['flux_ratio_sq']
-    
-#    period_df = meta_data[['object_id', 'period--0', 'period--1', 'period--2',
-#                     'period--3', 'period--4', 'period--5']]\
-#        .set_index('object_id').unstack().reset_index()
-#    period_map = {k: int(k.split('--')[1]) for k in ['period--' + str(i) for i in range(6)]}
-#    period_df.columns = ['passband', 'object_id', 'period']
-#    period_df['passband'] = period_df['passband'].map(period_map)
-#    ts_data = ts_data.merge(period_df, on=['object_id', 'passband'], how='inner')
-#    ts_data['mjd'] = ts_data['mjd']%ts_data['period']
-#    ts_data = ts_data.groupby(['object_id', 'passband', 'mjd']).mean().reset_index()
 
 #    
 #    vmag = {0: 1.810, 1:3.730, 2:4.490, 3:4.760, 4:4.810, 5: 1.600}
@@ -286,7 +276,13 @@ def getFullData(ts_data, meta_data, perpb=False):
             .apply(lambda df: pd.Series({'mjd_det': max(df.mjd) - min(df.mjd)}))\
             .reset_index()
     full_data = full_data.merge(z, how='left', on='object_id')
+    del z
     
+    z = ts_data.loc[ts_data.detected==1].groupby('object_id')\
+            .apply(lambda df: pd.Series({'mjd_decay': df.mjd.loc[df.flux.idxmax()] - df.mjd.loc[df.flux.idxmin()]}))\
+            .reset_index()
+    full_data = full_data.merge(z, how='left', on='object_id')
+    del z
     ################## frequency
 #    freq = ts_data.groupby(['object_id']).apply(lcFreq).reset_index()
 #    full_data = full_data.merge(period_df, how='left',
@@ -304,7 +300,23 @@ def getFullData(ts_data, meta_data, perpb=False):
 #        del full_data[f]    
     
 ############## feature interactions
-#    full_data['correction_diff'] = full_data['flux_min'] - full_data['mwebv']
+#    period_df = meta_data[['object_id', 'period--0', 'period--1', 'period--2',
+#                     'period--3', 'period--4', 'period--5']]\
+#        .set_index('object_id').unstack().reset_index()
+#    period_map = {k: int(k.split('--')[1]) for k in ['period--' + str(i) for i in range(6)]}
+#    period_df.columns = ['passband', 'object_id', 'period']
+#    period_df['passband'] = period_df['passband'].map(period_map)
+#    ts_data = ts_data.merge(period_df, on=['object_id', 'passband'], how='inner')
+#    ts_data['mjd'] = ts_data['mjd']%ts_data['period']
+#    z = ts_data.loc[ts_data.detected==1].groupby('object_id').apply(lambda df: df['flux'].abs().min())
+#    full_data['correction_diff'] = z - full_data.set_index('object_id')['mwebv']
+#    full_data['correction_diff'] = full_data['flux_mean'] - full_data['mwebv']
+    
+#    
+
+#    ts_data = ts_data.groupby(['object_id', 'passband', 'mjd']).mean().reset_index()
+    
+    #train features
     train_features = [f for f in full_data.columns if f not in excluded_features]
 #    del agg_ts
     gc.collect()
@@ -367,14 +379,24 @@ def getMetaData():
 #        
 #    d0 = 63 * (np.pi/180)
 #    a0 = 350 * (np.pi/180)
-#    delta = train_meta['decl']*(np.pi/180)
-#    alpha = train_meta['ra']*(np.pi/180)
-#    x = np.cos(delta)*np.cos(alpha)
-#    y = np.cos(delta)*np.sin(alpha)
+    delta = train_meta['decl']*(np.pi/180)
+    alpha = train_meta['ra']*(np.pi/180)
+    x = np.cos(delta)*np.cos(alpha)
+    y = np.cos(delta)*np.sin(alpha)
+    z = np.sin(delta)
 #    x0 = np.cos(d0)*np.cos(a0)
 #    y0 = np.cos(d0)*np.sin(a0)
 #    train_meta['d_sky'] = np.sqrt(np.square(x-x0) + np.square(y-y0))
-#    train_meta['d_sky'] = np.sqrt(np.square(x) + np.square(y) + np.square(train_meta['hostgal_photoz']))
+    train_meta['d_sky'] = np.sqrt(np.square(x) + np.square(y) + np.square(z)
+                                  + np.square(train_meta['hostgal_photoz']))
+    
+    delta = test_meta_data['decl']*(np.pi/180)
+    alpha = test_meta_data['ra']*(np.pi/180)
+    x = np.cos(delta)*np.cos(alpha)
+    y = np.cos(delta)*np.sin(alpha)
+    z = np.sin(delta)
+    test_meta_data['d_sky'] = np.sqrt(np.square(x) + np.square(y) + np.square(z)
+                              + np.square(test_meta_data['hostgal_photoz']))
     
 #    train_meta['c_index'] = train_meta['mwebv'].map(col_index)
 #    train_meta['gal_pyt2'] = np.power(np.power(train_meta['gal_l'], 2) + np.power(train_meta['gal_b'], 2), 0.5)

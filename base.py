@@ -437,7 +437,7 @@ if do_prediction is True:
             print('%15d done in %5.1f' % (chunks * (i_c + 1), (time.time() - start) / 60))
 
 if do_prediction is True or loaded_test is True:
-    model = 'output/gb_predictions_lgb'
+    model = 'output/gb_predictions_comb'
     z = pd.read_csv(model + '.csv')
     
     preds_99 = np.ones(z.shape[0])
