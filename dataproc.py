@@ -268,7 +268,7 @@ def getFullData(ts_data, meta_data, perpb=False):
         how='left',
         on='object_id'
     )
-    del full_data['distmod']#, full_data['hostgal_specz']
+#    del full_data['distmod']-#, full_data['hostgal_specz']
     
     #######################################
 #     detected-based mjd length feature for each object id only
@@ -284,6 +284,10 @@ def getFullData(ts_data, meta_data, perpb=False):
     full_data = full_data.merge(z, how='left', on='object_id')
     del z
     full_data['flux_amp'] = full_data['flux_amp']/full_data['mjd_det']
+    
+    full_data['r'] = np.power(full_data['distmod']/5, 10)*10
+    full_data.loc[full_data['r'].isna(), 'r'] = 0
+    full_data['r']  = full_data['r']/np.square(1+full_data['hostgal_photoz'] )
 
 #    full_data = full_data.merge(z, how='left', on='object_id')
 #    del z
