@@ -273,16 +273,20 @@ def getFullData(ts_data, meta_data, perpb=False):
     #######################################
 #     detected-based mjd length feature for each object id only
     z = ts_data.loc[ts_data.detected==1].groupby('object_id')\
-            .apply(lambda df: pd.Series({'mjd_det': max(df.mjd) - min(df.mjd)}))\
-            .reset_index()
+        .apply(lambda df: pd.Series({'mjd_det': max(df.mjd) - min(df.mjd),
+                                     'mjd_decay':\
+                                         df.mjd.loc[df.flux.idxmax()]\
+                                         - df.mjd.loc[df.flux.idxmin()],
+                                     'flux_amp': df.flux.max()\
+                                                 - df.flux.min()}))\
+        .reset_index()
+        
     full_data = full_data.merge(z, how='left', on='object_id')
     del z
-    
-    z = ts_data.loc[ts_data.detected==1].groupby('object_id')\
-            .apply(lambda df: pd.Series({'mjd_decay': df.mjd.loc[df.flux.idxmax()] - df.mjd.loc[df.flux.idxmin()]}))\
-            .reset_index()
-    full_data = full_data.merge(z, how='left', on='object_id')
-    del z
+    full_data['flux_amp'] = full_data['flux_amp']/full_data['mjd_det']
+
+#    full_data = full_data.merge(z, how='left', on='object_id')
+#    del z
     ################## frequency
 #    freq = ts_data.groupby(['object_id']).apply(lcFreq).reset_index()
 #    full_data = full_data.merge(period_df, how='left',
