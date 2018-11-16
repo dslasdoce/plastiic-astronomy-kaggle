@@ -402,6 +402,8 @@ def getMetaData():
     test_meta_data['d_sky'] = np.sqrt(np.square(x) + np.square(y) + np.square(z)
                               + np.square(test_meta_data['hostgal_photoz']))
     
+    train_meta['host_diff'] = train_meta['distmod'] - train_meta['mwebv']
+    
 #    train_meta['c_index'] = train_meta['mwebv'].map(col_index)
 #    train_meta['gal_pyt2'] = np.power(np.power(train_meta['gal_l'], 2) + np.power(train_meta['gal_b'], 2), 0.5)
 #    train_meta['gal_pyt'] = np.power(np.power(train_meta['decl'], 2) + np.power(train_meta['ra'], 2), 0.5)
