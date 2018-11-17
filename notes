@@ -63,7 +63,7 @@ MedianBRP -
 PairSlopeTrend - 
 PercentAmplitude - 
 PercentDifferenceFluxPercentile - 
-PeriodLS - 
+PeriodLS - 'may include'
 Period_fit - 
 Psi_CS - 
 Psi_eta - 
@@ -88,7 +88,7 @@ obj,pb -
 
 
 todo
-LightGBM: 0.6294701676526209
+LightGBM: 0.6174746958875701
 flux_min - mwebv *
 distance from earth using redshift and coordinates *
 

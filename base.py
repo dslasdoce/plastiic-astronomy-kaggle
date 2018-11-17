@@ -376,13 +376,20 @@ if do_prediction is True:
             chunk_last = df[mask_last] 
             #remove the rows of the last object_id from the dataset
             df = df[~mask_last]
-        if i_c <52:
-            del mask_last, df
-            continue
+        
+        
+        #if i_c <52:
+            #del mask_last, df
+            #continue
         gc.collect()
         full_test, train_features = dproc.getFullData(ts_data=df,
                                                       meta_data=test_meta_data)
-        del df, mask_last
+        try:
+            del mask_last
+        except NameError:
+            pass
+        del df
+        
         gc.collect()
         full_test = full_test.fillna(train_mean)
         
@@ -437,7 +444,7 @@ if do_prediction is True:
             print('%15d done in %5.1f' % (chunks * (i_c + 1), (time.time() - start) / 60))
 
 if do_prediction is True or loaded_test is True:
-    model = 'output/gb_predictions_comb'
+    model = 'output/gb_predictions_lgb'
     z = pd.read_csv(model + '.csv')
     
     preds_99 = np.ones(z.shape[0])

@@ -164,4 +164,4 @@ preds_lgbm = pd.read_csv('output/gb_predictions_lgb_scgal.csv')
 preds_blend = preds_nn
 preds_blend[label_features] = 0.4*preds_blend[label_features] + 0.6*preds_lgbm[label_features]
 
-preds_blend.to_csv('blend.csv', index=False)
+preds_blend.to_csv('output/blend.csv', index=False)

@@ -26,7 +26,9 @@ excluded_features = ['target', 'target_id', 'y', 'object_id', 'passband',
                      'ra', 'decl',
                      'gal_l', 'gal_b',
                      'ddf']
-excluded_features += []
+#excluded_features += ['Eta_e--' + str(i) for i in range(6)]
+
+
     
 def getDataParameters():
     # actual class list
@@ -48,11 +50,27 @@ try:
     ft = sys.argv[1]
 except IndexError:
     print("using default feets")
-    ft = ['Eta_e', 'LinearTrend', 'MaxSlope', 'Q31', 'StructureFunction_index_21']
-#    ft = ['Eta_e', 'Amplitude', 'Autocor_length', 'Beyond1Std']
+#    ft = ['Eta_e', 'LinearTrend', 'MaxSlope', 'Q31', 'StructureFunction_index_21']
+    ft = ['LinearTrend', 'MaxSlope', 'Q31', 'Amplitude', 'Autocor_length',
+          'Beyond1Std', 'FluxPercentileRatioMid20', 'FluxPercentileRatioMid80']
+
 fs = feets.FeatureSpace(only=ft)
 print(ft)
-
+import peakutils
+def peakAndValley(df):
+    df = df.reset_index(drop=True)
+    indices_peak = peakutils.indexes(df['flux'], min_dist=50)
+    indices_valley = peakutils.indexes(-df['flux'], min_dist=50)
+    try:
+        indices_peak = indices_peak[0]
+        indices_valley = [i for i in indices_valley if i > indices_peak][0]
+        val = df['mjd'].iloc[indices_peak] - df['mjd'].iloc[indices_valley]
+    except:
+        val = 0
+    
+    return pd.Series([val], index=['decay_period'])
+        
+    
 def lcperiod(df_main):
     df_main = df_main.sort_values('mjd')
     try:
@@ -225,6 +243,8 @@ def getFullData(ts_data, meta_data, perpb=False):
     del agg_df_ts
     gc.collect()
     ###########################
+#    df_15decay = ts_data.groupby('object_id').apply(peakAndValley).reset_index()
+    
 #    df_15decay = ts_data.groupby(['object_id','passband']).apply(get15decay).reset_index()
 #    df_15decay = ts_data.groupby(['object_id','passband']).apply(getMax).reset_index()
     
@@ -238,7 +258,7 @@ def getFullData(ts_data, meta_data, perpb=False):
     
     ############################################################################
     #lc feats per passband and object_id #
-#    lc_feats = ts_data.groupby(['object_id']).apply(lcFeaturesEx).reset_index()
+    lc_feats = ts_data.groupby(['object_id']).apply(lcFeaturesEx).reset_index()
 #    aggs = {'Beyond1Std': ['min', 'max', 'mean', 'std']}
 #    lc_feats = lc_feats.groupby('object_id').agg(aggs)
 #    new_columns = [
@@ -246,7 +266,7 @@ def getFullData(ts_data, meta_data, perpb=False):
 #        ]
 #    lc_feats.columns = new_columns
 
-#    full_data = full_data.merge(lc_feats, how='left', on='object_id')
+    full_data = full_data.merge(lc_feats, how='left', on='object_id')
     
     ############################################################################
     aggs = {'flux_by_flux_ratio_sq': ['skew']}
@@ -278,7 +298,9 @@ def getFullData(ts_data, meta_data, perpb=False):
                                          df.mjd.loc[df.flux.idxmax()]\
                                          - df.mjd.loc[df.flux.idxmin()],
                                      'flux_amp': df.flux.max()\
-                                                 - df.flux.min()}))\
+                                                 - df.flux.min(),
+                                     'flux_amp_median': df.flux.max()\
+                                                 - df.flux.median()}))\
         .reset_index()
         
     full_data = full_data.merge(z, how='left', on='object_id')
@@ -289,6 +311,8 @@ def getFullData(ts_data, meta_data, perpb=False):
     full_data.loc[full_data['r'].isna(), 'r'] = 0
     full_data['r']  = full_data['r']/np.square(1+full_data['hostgal_photoz'] )
 
+#    full_data['flux_diff_mm']  = full_data['flux_max'] - full_data['flux_mean']
+#    full_data['flux_diff_mm2']  = full_data['flux_diff_mm']/full_data['mjd_decay']
 #    full_data = full_data.merge(z, how='left', on='object_id')
 #    del z
     ################## frequency
@@ -407,6 +431,7 @@ def getMetaData():
                               + np.square(test_meta_data['hostgal_photoz']))
     
     train_meta['host_diff'] = train_meta['distmod'] - train_meta['mwebv']
+    test_meta_data['host_diff'] = test_meta_data['distmod'] - test_meta_data['mwebv']
     
 #    train_meta['c_index'] = train_meta['mwebv'].map(col_index)
 #    train_meta['gal_pyt2'] = np.power(np.power(train_meta['gal_l'], 2) + np.power(train_meta['gal_b'], 2), 0.5)
