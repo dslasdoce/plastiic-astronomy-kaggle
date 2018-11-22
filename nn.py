@@ -12,8 +12,8 @@ import gc
 import dataproc as dproc
 from sklearn.preprocessing import OneHotEncoder
 
-do_prediction = True
-loaded_test = False
+do_prediction = False
+loaded_test = True
 ########################### Data and Parameters Import ##########################
 target_map, label_features, all_classes, all_class_weights \
     = dproc.getDataParameters()
@@ -348,7 +348,7 @@ if do_prediction is True:
             print('%15d done in %5.1f' % (chunks * (i_c + 1), (time.time() - start) / 60))
 
 if do_prediction is True or loaded_test is True:
-    model = 'output/nn_predictions_nn'
+    model = 'output/ld-nn_predictions_nn'
     z = pd.read_csv(model + '.csv')
     
     preds_99 = np.ones(z.shape[0])

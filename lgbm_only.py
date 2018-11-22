@@ -16,7 +16,7 @@ import xgboost as xgb
 import seaborn as sns
 import matplotlib.pyplot as plt
 plt.ioff()
-do_prediction = True
+do_prediction = False
 
 ########################### Data and Parameters Import ##########################
 target_map, label_features, all_classes, all_class_weights \
@@ -25,6 +25,7 @@ target_map, label_features, all_classes, all_class_weights \
 train_meta, test_meta_data = dproc.getMetaData()
 train = pd.read_csv('input/training_set.csv')
 train_full, train_features = dproc.getFullData(train, train_meta)
+#t = train_full[['target', 'q_count']]
 #del train
 gc.collect()
 #train_full[['object_id', 'period']].to_csv("train_periods.csv", index=False)
@@ -358,7 +359,8 @@ if do_prediction is True:
         full_test = full_test.fillna(train_mean)
         
         if i_c == 0:
-            full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved_gb.csv", index=False)
+            full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved_gb.csv",
+                             index=False)
         else: 
             full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved_gb.csv",
                              index=False, header=False, mode='a')
@@ -404,23 +406,30 @@ if do_prediction is True:
             print('%15d done in %5.1f' % (chunks * (i_c + 1), (time.time() - start) / 60))
 
 if do_prediction is True:
+    def GenUnknown(data):
+        return ((((((data["mymedian"]) + (((data["mymean"]) / 2.0)))/2.0)) + (((((1.0) - (((data["mymax"]) * (((data["mymax"]) * (data["mymax"]))))))) / 2.0)))/2.0)
+    
     model = 'output/gb_predictions_lgb'
     z = pd.read_csv(model + '.csv')
     
-    preds_99 = np.ones(z.shape[0])
     no_99 = label_features.copy()
     no_99.remove('class_99')
+
+    preds_99 = np.ones(z.shape[0])    
     for i in range(z[no_99].values.shape[1]):
         preds_99 *= (1 - z[no_99].values[:, i])
     z['class_99'] = 0.18 * preds_99 / np.mean(preds_99)
+        
+#    y = pd.DataFrame()
+#    model = 'output/gb_predictions_lgb'
+#    z = pd.read_csv(model + '.csv')
+#    y['mymean'] = z[no_99].mean(axis=1)
+#    y['mymedian'] = z[no_99].median(axis=1)
+#    y['mymax'] = z[no_99].max(axis=1)
+#    z['class_99'] = GenUnknown(y)
     
     cols = list(z.columns)
     cols.remove('object_id')
-    #    z['class_99'] = 1 - z[cols].max(axis=1)
-    #z = z[['object_id'] + label_features]
-    #tech ='_99sc'
-    #.to_csv(model + tech + '.csv', index=False)
-    #label_features_exgal
     gal_objs = test_meta_data\
                 .loc[test_meta_data['hostgal_photoz']==0, 'object_id']
     exgal_objs = test_meta_data\
@@ -428,7 +437,9 @@ if do_prediction is True:
     z.loc[z['object_id'].isin(gal_objs), label_features_exgal] = 0
     z.loc[z['object_id'].isin(exgal_objs), label_features_gal] = 0
     
-    tech ='_scgal'
-    z.to_csv(model + tech + '.csv', index=False)
+#    tech ='_scgal_new'
+#    z.to_csv(model + tech + '.csv', index=False)
         
-    #    z = pd.read_csv('full_test_saved.csv')
+    preds_blend = pd.read_csv('output/nn_predictions_nn_scgal.csv')
+    preds_blend[label_features] = 0.4*preds_blend[label_features] + 0.6*z[label_features]
+    preds_blend.to_csv('output/blend.csv', index=False)

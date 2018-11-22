@@ -56,18 +56,23 @@ oof_preds_blend[label_features] = (1- lgb_weight)*oof_preds_xgb[label_features] 
                                                       
                                                         
 print("LightGBM: {0}".format(multiWeightedLoss(train_meta['target_id'],
-                                               oof_preds_lgbm[label_features].values)))
+                                               oof_preds_lgbm[label_features].values[:, :14],
+                                               no_class99=True)))
 print("XGBoost: {0}".format(multiWeightedLoss(train_meta['target_id'],
-                                              oof_preds_xgb[label_features].values)))
+                                              oof_preds_xgb[label_features].values[:, :14],
+                                               no_class99=True)))
 print("NN: {0}".format(multiWeightedLoss(train_meta['target_id'],
-                                              oof_preds_nn[label_features].values)))
+                                              oof_preds_nn[label_features].values[:, :14],
+                                               no_class99=True)))
 print("Combined: {0}".format(multiWeightedLoss(train_meta['target_id'],
-                                               oof_preds_blend[label_features].values)))
+                                               oof_preds_blend[label_features].values[:, :14],
+                                               no_class99=True)))
 
-oof_preds_blend[label_features] = 0.5*oof_preds_blend[label_features]\
-                                  +  0.5*oof_preds_nn[label_features]
+oof_preds_blend[label_features] = 0.6*oof_preds_blend[label_features]\
+                                  +  0.4*oof_preds_nn[label_features]
 print("Blend: {0}".format(multiWeightedLoss(train_meta['target_id'],
-                                               oof_preds_blend[label_features].values)))
+                                               oof_preds_blend[label_features].values[:, :14],
+                                               no_class99=True)))
 def xgbMultiWeightedLoss(pred_class, target_class_dmatrix):
     classes = all_classes.copy()
     cl_vals = all_clmap_vals.copy()

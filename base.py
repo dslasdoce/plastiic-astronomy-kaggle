@@ -177,7 +177,32 @@ xgb_params =  {
       "min_split_gain": 0.01,
       "min_child_weight": 10,
       "n_estimators": 1000
-      }      
+      }     
+
+xgb_params = {    
+        'objective': 'multi:softprob', 
+        'eval_metric': 'mlogloss', 
+        'silent': True, 
+        'num_class':14,
+        
+        'booster': 'gbtree',
+        'n_jobs': 4,
+        'n_estimators': 1000,
+        'tree_method': 'hist',
+        'grow_policy': 'lossguide',
+        'base_score': 0.25,
+        'max_depth': 7,
+        'max_delta_step': 2,  #default=0
+        'learning_rate': 0.03,
+        'max_leaves': 11,
+        'min_child_weight': 64,
+        'gamma': 0.1, # default=
+        'subsample': 0.7,
+        'colsample_bytree': 0.68,
+        'reg_alpha': 0.01, # default=0
+        'reg_lambda': 10., # default=1
+        'seed': 538
+    } 
 
 lgbm_list = []
 xgb_list = []
@@ -391,14 +416,14 @@ if do_prediction is True:
         del df
         
         gc.collect()
-        full_test = full_test.fillna(train_mean)
         
         if i_c == 0:
-            full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved_gb.csv", index=False)
+            full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved.csv", index=False)
         else: 
-            full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved_gb.csv",
+            full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved.csv",
                              index=False, header=False, mode='a')
-            
+        
+        full_test = full_test.fillna(train_mean)
         # Make predictions
         print("Predicting...")
         
@@ -444,7 +469,7 @@ if do_prediction is True:
             print('%15d done in %5.1f' % (chunks * (i_c + 1), (time.time() - start) / 60))
 
 if do_prediction is True or loaded_test is True:
-    model = 'output/gb_predictions_lgb'
+    model = 'output/gb_predictions_comb'
     z = pd.read_csv(model + '.csv')
     
     preds_99 = np.ones(z.shape[0])

@@ -14,6 +14,7 @@ import gc
 #from gatspy.periodic import LombScargleMultiband
 from astropy.stats import LombScargle
 import feets
+from tsfresh.feature_extraction import extract_features
 #import matplotlib.pyplot as plt
 #import seaborn as sns
 
@@ -163,7 +164,40 @@ def passbandToCols(df):
     return pd.DataFrame(columns=["{0}--{1}".format(idx[0], idx[1])\
                                  for idx in df.index.tolist()],
                         data=[df.values])
-from tsfresh.feature_extraction import extract_features   
+
+def boundaryFreq(df):
+    q_low = df['flux'].quantile(0.90)
+    vals_upper = df.loc[df['flux'] > q_low]
+    q_count = vals_upper['mjd'].count()
+    q_up_mjd_diff = vals_upper['mjd'].max() - vals_upper['mjd'].min()
+    q_up_flux_diff = vals_upper['flux'].max() - vals_upper['flux'].min()
+    q_up_ratio = q_up_flux_diff/q_up_mjd_diff
+    
+    q_low = df['flux'].quantile(0.45)
+    q_up = df['flux'].quantile(0.55)
+    vals_mid = df.loc[(df['flux'] > q_low) & (df['flux'] < q_up)]
+    q_mid_count = vals_mid['mjd'].count()
+    q_mid_mjd_diff = vals_mid['mjd'].max() - vals_mid['mjd'].min()
+    q_mid_flux_diff = vals_mid['flux'].max() - vals_mid['flux'].min()
+    q_mid_ratio = q_mid_flux_diff/q_mid_mjd_diff
+    
+    q_up = df['flux'].quantile(0.1)
+    vals_low = df.loc[df['flux'] < q_up]
+    q_low_count = vals_low['mjd'].count()
+    q_low_mjd_diff = vals_low['mjd'].max() - vals_low['mjd'].min()
+    q_low_flux_diff = vals_low['flux'].max() - vals_low['flux'].min()
+    q_low_ratio = q_low_flux_diff/q_low_mjd_diff
+    
+    r_um = q_count/q_mid_count
+    r_ul = q_count/q_low_count
+    
+    
+    
+    return pd.Series({'q_count': q_count, 'q_up_ratio':q_up_ratio,
+                      'q_mid_count': q_mid_count, 'q_mid_ratio': q_mid_ratio,
+                      'q_low_count': q_low_count, 'q_low_ratio': q_low_ratio,
+                      'r_um': r_um, 'r_ul': r_ul})
+
 def getFullData(ts_data, meta_data, perpb=False):
     aggs = {'flux': ['min', 'max', 'mean', 'median', 'std', 'size', 'skew'],
             'flux_err': ['min', 'max', 'mean', 'median', 'std', 'skew'],
@@ -231,13 +265,79 @@ def getFullData(ts_data, meta_data, perpb=False):
     gc.collect()
     
     ############################
-    fcp = {'fft_coefficient': [{'coeff': 0, 'attr': 'abs'},
-                               {'coeff': 1, 'attr': 'abs'}],
-           'kurtosis' : None, 'skewness' : None}
+#    fcp = {'fft_coefficient': [{'coeff': 0, 'attr': 'abs'},
+#                               {'coeff': 1, 'attr': 'abs'}],
+#           'kurtosis' : None, 'skewness' : None}
+    fcp = {
+        'flux': {
+            'longest_strike_above_mean': None,
+            'longest_strike_below_mean': None,
+            'mean_change': None,
+            'mean_abs_change': None,
+            'length': None,
+        },
+                
+        'flux_by_flux_ratio_sq': {
+            'longest_strike_above_mean': None,
+            'longest_strike_below_mean': None,       
+        },
+                
+        'flux_passband': {
+            'fft_coefficient': [
+                    {'coeff': 0, 'attr': 'abs'}, 
+                    {'coeff': 1, 'attr': 'abs'}
+                ],
+            'kurtosis' : None, 
+            'skewness' : None,
+        },
+                
+        'mjd': {
+            'mean_change': None,
+            'mean_abs_change': None,
+        },
+    }
     agg_df_ts = extract_features(ts_data, column_id='object_id', column_sort='mjd',
                                      column_kind='passband', column_value='flux',
-                                     default_fc_parameters=fcp, n_jobs=2)\
-                .reset_index()
+                                     default_fc_parameters=fcp['flux_passband'],
+                                     n_jobs=2).reset_index()
+    agg_df_ts = agg_df_ts.rename({'id':'object_id'}, axis=1)
+    full_data = full_data.merge(agg_df_ts, how='left', on='object_id')
+    del agg_df_ts
+    gc.collect()
+    
+    agg_df_ts_flux = extract_features(ts_data, 
+                                      column_id='object_id', 
+                                      column_value='flux', 
+                                      default_fc_parameters=fcp['flux'],
+                                      n_jobs=2).reset_index()
+    agg_df_ts_flux = agg_df_ts_flux.rename({'id':'object_id'}, axis=1)
+    full_data = full_data.merge(agg_df_ts_flux, how='left', on='object_id')
+    del agg_df_ts_flux
+    
+    agg_df_ts_flux_by_flux_ratio_sq = extract_features(ts_data, 
+                                      column_id='object_id', 
+                                      column_value='flux_by_flux_ratio_sq', 
+                                      default_fc_parameters=fcp['flux_by_flux_ratio_sq'],
+                                      n_jobs=2).reset_index()
+    agg_df_ts_flux_by_flux_ratio_sq = agg_df_ts_flux_by_flux_ratio_sq\
+                                      .rename({'id':'object_id'}, axis=1)
+    full_data = full_data.merge(agg_df_ts_flux_by_flux_ratio_sq, how='left',
+                                on='object_id')
+    del agg_df_ts_flux_by_flux_ratio_sq
+    
+#    agg_df_mjd = extract_features(ts_data.loc[ts_data.detected==1], 
+#                                  column_id='object_id', 
+#                                  column_value='mjd', 
+#                                  default_fc_parameters=fcp['mjd'], n_jobs=2).reset_index()
+#    agg_df_mjd = agg_df_mjd.rename({'id':'object_id'}, axis=1)
+#    full_data = full_data.merge(agg_df_mjd, how='left', on='object_id')
+#    del agg_df_mjd
+#    gc.collect()
+    
+    agg_df_ts = extract_features(ts_data, column_id='object_id', column_sort='mjd',
+                                 column_kind='passband', column_value='amag',
+                                 default_fc_parameters=fcp['flux_passband'],
+                                 n_jobs=2).reset_index()
     agg_df_ts = agg_df_ts.rename({'id':'object_id'}, axis=1)
     full_data = full_data.merge(agg_df_ts, how='left', on='object_id')
     del agg_df_ts
@@ -311,10 +411,16 @@ def getFullData(ts_data, meta_data, perpb=False):
     full_data.loc[full_data['r'].isna(), 'r'] = 0
     full_data['r']  = full_data['r']/np.square(1+full_data['hostgal_photoz'] )
 
-#    full_data['flux_diff_mm']  = full_data['flux_max'] - full_data['flux_mean']
+    full_data['flux_diff_mm']  = (full_data['flux_max']\
+                                  - full_data['flux_median'])\
+                                 /full_data['flux_max']
 #    full_data['flux_diff_mm2']  = full_data['flux_diff_mm']/full_data['mjd_decay']
 #    full_data = full_data.merge(z, how='left', on='object_id')
 #    del z
+    
+    ###############
+#    z = ts_data.groupby('object_id').apply(boundaryFreq)
+#    full_data = full_data.merge(z, how='left', on='object_id')
     ################## frequency
 #    freq = ts_data.groupby(['object_id']).apply(lcFreq).reset_index()
 #    full_data = full_data.merge(period_df, how='left',
@@ -345,9 +451,16 @@ def getFullData(ts_data, meta_data, perpb=False):
 #    full_data['correction_diff'] = full_data['flux_mean'] - full_data['mwebv']
     
 #    
-
-#    ts_data = ts_data.groupby(['object_id', 'passband', 'mjd']).mean().reset_index()
-    
+#    agg = {'flux': ['min', }}
+    z = ts_data.groupby(['object_id', 'passband'])['flux'].agg(np.max).reset_index()
+    z.columns = ['object_id', 'passband', 'fcmax']#, 'fcmin']
+#    z = ts_data.groupby(['object_id', 'passband'])['flux'].transform(max)
+    z['fcolmax_flux'] = 2.5*np.log10(z['fcmax']).diff()
+#    z['fcolmin_flux'] = z['fcmin'].diff()
+    del z['fcmax']#, z['fcmin']
+    z = z.loc[z['passband']!=0]
+    z = z.groupby('object_id').apply(passbandToCols).reset_index()
+    full_data = full_data.merge(z, how='left', on='object_id')
     #train features
     train_features = [f for f in full_data.columns if f not in excluded_features]
 #    del agg_ts
@@ -367,7 +480,35 @@ def col_index(cidx):
         return 4
     else:
         return 5
-        
+
+def haversine_plus(lon1, lat1, lon2, lat2):
+    """
+    Calculate the great circle distance between two points 
+    on the earth (specified in decimal degrees) from 
+    #https://stackoverflow.com/questions/4913349/haversine-formula-in-python-bearing-and-distance-between-two-gps-points
+    """
+    #Convert decimal degrees to Radians:
+    lon1 = np.radians(lon1)
+    lat1 = np.radians(lat1)
+    lon2 = np.radians(lon2)
+    lat2 = np.radians(lat2)
+
+    #Implementing Haversine Formula: 
+    dlon = np.subtract(lon2, lon1)
+    dlat = np.subtract(lat2, lat1)
+
+    a = np.add(np.power(np.sin(np.divide(dlat, 2)), 2),  
+                          np.multiply(np.cos(lat1), 
+                                      np.multiply(np.cos(lat2), 
+                                                  np.power(np.sin(np.divide(dlon, 2)), 2))))
+    
+    haversine = np.multiply(2, np.arcsin(np.sqrt(a)))
+    return {
+        'haversine': haversine, 
+        'latlon1': np.subtract(np.multiply(lon1, lat1), np.multiply(lon2, lat2)), 
+   }
+
+      
 def getMetaData():
     train_meta = pd.read_csv('input/training_set_metadata.csv')
     test_meta_data = pd.read_csv('input/test_set_metadata.csv')
@@ -430,8 +571,17 @@ def getMetaData():
     test_meta_data['d_sky'] = np.sqrt(np.square(x) + np.square(y) + np.square(z)
                               + np.square(test_meta_data['hostgal_photoz']))
     
-    train_meta['host_diff'] = train_meta['distmod'] - train_meta['mwebv']
-    test_meta_data['host_diff'] = test_meta_data['distmod'] - test_meta_data['mwebv']
+#    train_meta['host_diff'] = train_meta['distmod'] - train_meta['mwebv']
+#    test_meta_data['host_diff'] = test_meta_data['distmod'] - test_meta_data['mwebv']
+    
+#    train_meta['hostgal_photoz_certain'] = np.multiply(
+#            train_meta['hostgal_photoz'].values, 
+#             np.exp(train_meta['hostgal_photoz_err'].values))
+#    z = {}
+#    z.update(haversine_plus(train_meta['ra'].values, train_meta['decl'].values, 
+#                   train_meta['gal_l'].values, train_meta['gal_b'].values))
+#    train_meta['haversine'] = z['haversine']
+#    train_meta['latlon1'] = z['latlon1']
     
 #    train_meta['c_index'] = train_meta['mwebv'].map(col_index)
 #    train_meta['gal_pyt2'] = np.power(np.power(train_meta['gal_l'], 2) + np.power(train_meta['gal_b'], 2), 0.5)
