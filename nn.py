@@ -299,7 +299,7 @@ if do_prediction is True:
             #remove the rows of the last object_id from the dataset
             df = df[~mask_last]
         
-        full_test, train_features = dproc.getFullData(ts_data=df,
+        full_test, train_feats = dproc.getFullData(ts_data=df,
                                                       meta_data=test_meta_data)
         del df
         gc.collect()        

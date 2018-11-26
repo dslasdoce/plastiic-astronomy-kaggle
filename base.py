@@ -184,7 +184,6 @@ xgb_params = {
         'eval_metric': 'mlogloss', 
         'silent': True, 
         'num_class':14,
-        
         'booster': 'gbtree',
         'n_jobs': 4,
         'n_estimators': 1000,
@@ -403,11 +402,12 @@ if do_prediction is True:
             df = df[~mask_last]
         
         
-        #if i_c <52:
-            #del mask_last, df
-            #continue
+        if i_c <124:
+            del mask_last, df
+            gc.collect()
+            continue
         gc.collect()
-        full_test, train_features = dproc.getFullData(ts_data=df,
+        full_test, train_features_test = dproc.getFullData(ts_data=df,
                                                       meta_data=test_meta_data)
         try:
             del mask_last

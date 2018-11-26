@@ -25,6 +25,7 @@ target_map, label_features, all_classes, all_class_weights \
 train_meta, test_meta_data = dproc.getMetaData()
 train = pd.read_csv('input/training_set.csv')
 train_full, train_features = dproc.getFullData(train, train_meta)
+
 #t = train_full[['target', 'q_count']]
 #del train
 gc.collect()
@@ -406,9 +407,6 @@ if do_prediction is True:
             print('%15d done in %5.1f' % (chunks * (i_c + 1), (time.time() - start) / 60))
 
 if do_prediction is True:
-    def GenUnknown(data):
-        return ((((((data["mymedian"]) + (((data["mymean"]) / 2.0)))/2.0)) + (((((1.0) - (((data["mymax"]) * (((data["mymax"]) * (data["mymax"]))))))) / 2.0)))/2.0)
-    
     model = 'output/gb_predictions_lgb'
     z = pd.read_csv(model + '.csv')
     

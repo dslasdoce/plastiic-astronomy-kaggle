@@ -23,7 +23,7 @@ target_map = {6: 0, 15:1, 16:2, 42:3, 52: 4, 53: 5, 62: 6, 64: 7,
               65: 8, 67: 9, 88: 10, 90: 11, 92: 12, 95: 13, 99: 14}
 target_map = dict(sorted(target_map.items(), key=operator.itemgetter(1)))
 excluded_features = ['target', 'target_id', 'y', 'object_id', 'passband',
-                     'hostgal_specz', 'distmod','index',
+                     'hostgal_specz', 'distmod','index', 'level_1'
                      'ra', 'decl',
                      'gal_l', 'gal_b',
                      'ddf']
@@ -198,6 +198,40 @@ def boundaryFreq(df):
                       'q_low_count': q_low_count, 'q_low_ratio': q_low_ratio,
                       'r_um': r_um, 'r_ul': r_ul})
 
+import sncosmo
+from astropy.table import Table
+pb_mapping = {0:'sdssu', 1:'sdssg', 2:'sdssr', 3:'sdssi', 4:'sdssz', 5:'desy'}
+model = sncosmo.Model(source='salt2')
+def lcFit(df_main):
+    df_main = df_main.rename({'mjd': 'time', 'passband': 'band'}, axis=1)
+    df_main['band'] = df_main['band'].map(pb_mapping)
+    df_main['zp'] = 25
+    df_main['zpsys'] = 'ab'
+    data = Table.from_pandas(df_main)
+    
+#    model.set(z=0.5)
+    try:
+        res, fitted_model = sncosmo.fit_lc(data, model, ['t0', 'x0', 'x1', 'c'],
+                                           minsnr=3)
+    except (RuntimeError, sncosmo.fitting.DataQualityError):
+        res = {}
+        res['parameters'] = [0,0,0,0,0]
+        res['param_names'] = ['z', 't0', 'x0', 'x1', 'c']
+    ret = pd.Series(res['parameters'], index=res['param_names'])
+    ret.drop('z', inplace=True)
+    ret.drop('t0', inplace=True)
+#    if ret['t0'] != 0:
+#        print(df_main.loc[df_main['time']==ret['t0'], 'flux'])
+    return ret
+
+def getAveDeclineRate(df_main):
+    df_main = df_main.sort_values('mjd').reset_index(drop=True)
+    df_main = df_main.loc[df_main['flux'].idxmax():]
+    df_main = df_main.loc[:df_main['flux'].idxmin()]
+    ave_decrate = {'ave_decrate':
+                    (df_main['flux'].diff()/df_main['mjd'].diff()).mean()}
+    return pd.Series(ave_decrate)
+
 def getFullData(ts_data, meta_data, perpb=False):
     aggs = {'flux': ['min', 'max', 'mean', 'median', 'std', 'size', 'skew'],
             'flux_err': ['min', 'max', 'mean', 'median', 'std', 'skew'],
@@ -240,7 +274,15 @@ def getFullData(ts_data, meta_data, perpb=False):
                                / full_data['flux_ratio_sq_sum']
     full_data['flux_dif3'] = (full_data['flux_max'] - full_data['flux_min'])\
                              / full_data['flux_w_mean']
+                             
+    z = ts_data.loc[ts_data['detected']==1]\
+        .groupby('object_id')\
+        .apply(lambda df: pd.Series(df.loc[df['flux'].idxmax(), 'passband'], index=['pbm']))\
+        .reset_index()
+    full_data = full_data.merge(z, how='left', on='object_id')
     
+#    z = ts_data.loc[ts_data['detected']==1].groupby('object_id').apply(lcFit).reset_index()
+#    full_data = full_data.merge(z, how='left', on='object_id')
 #    full_data['amp'] = full_data['flux_max'] - full_data['flux_min']
     ####################### loaded data up to here #############################
     #period calculation if period is per passband
@@ -452,7 +494,8 @@ def getFullData(ts_data, meta_data, perpb=False):
     
 #    
 #    agg = {'flux': ['min', }}
-    z = ts_data.groupby(['object_id', 'passband'])['flux'].agg(np.max).reset_index()
+    z = ts_data.loc[ts_data['detected']==1]\
+        .groupby(['object_id', 'passband'])['flux'].agg(np.max).reset_index()
     z.columns = ['object_id', 'passband', 'fcmax']#, 'fcmin']
 #    z = ts_data.groupby(['object_id', 'passband'])['flux'].transform(max)
     z['fcolmax_flux'] = 2.5*np.log10(z['fcmax']).diff()
@@ -460,7 +503,9 @@ def getFullData(ts_data, meta_data, perpb=False):
     del z['fcmax']#, z['fcmin']
     z = z.loc[z['passband']!=0]
     z = z.groupby('object_id').apply(passbandToCols).reset_index()
+    del z['level_1']
     full_data = full_data.merge(z, how='left', on='object_id')
+    
     #train features
     train_features = [f for f in full_data.columns if f not in excluded_features]
 #    del agg_ts
