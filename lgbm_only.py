@@ -15,6 +15,7 @@ import lightgbm as lgbm
 import xgboost as xgb
 import seaborn as sns
 import matplotlib.pyplot as plt
+from model_train import trainLGB
 plt.ioff()
 do_prediction = False
 
@@ -25,7 +26,7 @@ target_map, label_features, all_classes, all_class_weights \
 train_meta, test_meta_data = dproc.getMetaData()
 train = pd.read_csv('input/training_set.csv')
 train_full, train_features = dproc.getFullData(train, train_meta)
-
+train_feats_orig = train_features.copy()
 #t = train_full[['target', 'q_count']]
 #del train
 gc.collect()
@@ -35,93 +36,6 @@ all_clmap_vals = np.array(list(target_map.values()))
 print("Train Feats: {0}".format(train_features))
 print("Train Data All COLS: {0}".format(train_full.columns))
 ############################# LOSS FUNCTION ####################################
-def multiWeightedLoss(target_class, pred_class, no_class99=False):
-    #remove class 99
-    classes = all_classes.copy()
-    cl_vals = all_clmap_vals.copy()
-    cl_weights = all_class_weights.copy()
-    if no_class99 is True:
-        classes = classes[:-1]
-        cl_vals = cl_vals[:-1]
-        del cl_weights['class_99']
-        
-    #make dataframe of weights so the operations are broadcasted by columns
-    cl_weights = pd.DataFrame(cl_weights, index=[0])
-    
-    tmp_labels = ['class_' + str(cl) for cl in classes]
-    enc = OneHotEncoder(handle_unknown='ignore')
-    enc.fit(cl_vals.reshape(-1,1))
-    y_truth_encoded = enc.transform(target_class.values.reshape(-1,1)).toarray()
-    y_truth_encoded = pd.DataFrame(data=y_truth_encoded, columns=tmp_labels)
-        
-    eps = 1e-15
-    pred_class = pred_class/pred_class.sum(axis=1).reshape(-1,1)
-    y_prediction = np.clip(pred_class, eps, 1 - eps)
-    sum_loss_per_class = (y_truth_encoded * np.log(y_prediction)).sum(axis=0)
-    object_per_class = np.clip(y_truth_encoded.sum(axis=0), 1, float('inf'))
-    weighted_loss_class = (cl_weights * sum_loss_per_class)/object_per_class
-    loss = np.sum(-weighted_loss_class.sum(axis=1)/cl_weights.sum(axis=1))
-    return loss
-
-def lgbMultiWeightedLoss(target_class, pred_class):
-    classes = all_classes.copy()
-    cl_vals = all_clmap_vals.copy()
-    cl_weights = all_class_weights.copy()
-    if len(np.unique(target_class)) < 15:
-        classes = classes[:-1]
-        cl_vals = cl_vals[:-1]
-        del cl_weights['class_99']
-    cl_weights = pd.DataFrame(cl_weights, index=[0])
-    pred_class = pred_class.reshape(target_class.shape[0],
-                                    len(classes), order='F')
-    
-    label_features = ['class_' + str(cl) for cl in classes]
-    enc = OneHotEncoder(handle_unknown='ignore')
-    enc.fit(cl_vals.reshape(-1,1))
-    y_truth_encoded = enc.transform(target_class.reshape(-1,1)).toarray()
-    y_truth_encoded = pd.DataFrame(data=y_truth_encoded, columns=label_features)
-    
-#    for i, cl in enumerate(label_features):
-#        train_full[cl] = y_truth_encoded.loc[:, cl]
-    
-    eps = 1e-15
-    pred_class = pred_class/pred_class.sum(axis=1).reshape(-1,1)
-    y_prediction = np.clip(pred_class, eps, 1 - eps)
-    sum_loss_per_class = (y_truth_encoded * np.log(y_prediction)).sum(axis=0)
-    object_per_class = np.clip(y_truth_encoded.sum(axis=0), 1, float('inf'))
-    weighted_loss_class = (cl_weights * sum_loss_per_class)/object_per_class
-    loss = -np.sum(weighted_loss_class.sum(axis=1)/cl_weights.sum(axis=1))
-    return 'wloss', loss, False
-
-def xgbMultiWeightedLoss(pred_class, target_class_dmatrix):
-    classes = all_classes.copy()
-    cl_vals = all_clmap_vals.copy()
-    cl_weights = all_class_weights.copy()
-    target_class = target_class_dmatrix.get_label()
-    if len(np.unique(target_class)) < 15:
-        classes = classes[:-1]
-        cl_vals = cl_vals[:-1]
-        del cl_weights['class_99']
-    cl_weights = pd.DataFrame(cl_weights, index=[0])
-#    pred_class = pred_class.reshape(target_class.shape[0], len(classes), order='F')
-    
-    label_features = ['class_' + str(cl) for cl in classes]
-    enc = OneHotEncoder(handle_unknown='ignore')
-    enc.fit(cl_vals.reshape(-1,1))
-    y_truth_encoded = enc.transform(target_class.reshape(-1,1)).toarray()
-    y_truth_encoded = pd.DataFrame(data=y_truth_encoded, columns=label_features)
-    
-#    for i, cl in enumerate(label_features):
-#        train_full[cl] = y_truth_encoded.loc[:, cl]
-    
-    eps = 1e-15
-    pred_class = pred_class/pred_class.sum(axis=1).reshape(-1,1)
-    y_prediction = np.clip(pred_class, eps, 1 - eps)
-    sum_loss_per_class = (y_truth_encoded * np.log(y_prediction)).sum(axis=0)
-    object_per_class = np.clip(y_truth_encoded.sum(axis=0), 1, float('inf'))
-    weighted_loss_class = (cl_weights * sum_loss_per_class)/object_per_class
-    loss = -np.sum(weighted_loss_class.sum(axis=1)/cl_weights.sum(axis=1))
-    return 'wloss', loss
 
 ################################ Folding #######################################
 from sklearn.model_selection import StratifiedKFold
@@ -174,41 +88,8 @@ def plot_confusion_matrix(cm, classes,
     plt.xlabel('Predicted label')
     plt.tight_layout()
 ################### LightGBM ########################
-lgbm_params =  {
-    'task': 'train',
-    'boosting_type': 'gbdt',
-    'objective': 'multiclass',
-    'num_class': 14,
-    'metric': ['multi_logloss'],
-    "learning_rate": 0.02,
-     "num_leaves": 30,
-     "max_depth": 6,
-     "feature_fraction": 0.45,
-     "bagging_fraction": 0.3,
-     "reg_alpha": 0.3,
-     "reg_lambda": 0.3,
-      "min_split_gain": 0.01,
-      "min_child_weight": 0,
-      "n_estimators": 1000
-      } 
-#https://www.kaggle.com/ogrellier/plasticc-in-a-kernel-meta-and-data
-lgbm_params = {
-        'boosting_type': 'gbdt',
-        'objective': 'multiclass',
-        'num_class': 14,
-        'metric': 'multi_logloss',
-        'learning_rate': 0.03,
-        'subsample': .9,
-        'colsample_bytree': .7,
-        'reg_alpha': .01,
-        'reg_lambda': .01,
-        'min_split_gain': 0.01,
-        'min_child_weight': 10,
-        'n_estimators': 1000,
-        'silent': -1,
-        'verbose': -1,
-        'max_depth': 3
-    }
+cl_weights_tmp = all_class_weights.copy() 
+del cl_weights_tmp['class_99'] 
 #https://www.kaggle.com/iprapas/ideas-from-kernels-and-discussion-lb-1-135
 lgbm_params = {
     'boosting_type': 'gbdt',
@@ -225,67 +106,52 @@ lgbm_params = {
     'n_estimators': 1000,
     'silent': -1,
     'verbose': -1,
-    'max_depth': 3
+    'max_depth': 3,
+    'class_weight': {np.where(all_classes==int(cl.split('_')[1]))[0][0]: i\
+                     for (cl, i) in cl_weights_tmp.items()}
 }
 
-lgbm_list = []
-oof_preds_lgbm = np.zeros((train_full.shape[0], 15))
-imp_lgb = pd.DataFrame()
+lgbm_params = {
+    'boosting_type': 'gbdt',
+    'objective': 'multiclass',
+    'num_class': 14,
+    'metric': 'multi_logloss',
+    'learning_rate': 0.03,
+    'subsample': .9,
+    'colsample_bytree': 0.5,
+    'reg_alpha': .1,
+    'reg_lambda': .1,
+    'min_split_gain': 0.01,
+    'min_child_weight': 10,
+    'n_estimators': 1000,
+    'silent': -1,
+    'verbose': -1,
+    'max_depth': 3,
+    'class_weight': {np.where(all_classes==int(cl.split('_')[1]))[0][0]: i\
+                     for (cl, i) in cl_weights_tmp.items()}
+}
 
 #oof_preds_both = np.zeros((train_full.shape[0], 15))
 #test_prediction = np.zeros((test_meta_data.shape[0], 15))
 train_mean = train_full.mean(axis=0)
 train_full.fillna(train_mean, inplace=True)
-#train_full.fillna(train_mean, inplace=True)
-#fts = ['15decay_std', '15decay_min', '15decay_max', '15decay_mean']
-#for f in fts:
-#    try:
-#        train_features.remove(f)
-#    except:
-#        pass
-#train_features += ['15decay_mean']
-#train_full['cheat'] = 0
-#train_full.loc[train_full['target']==52, 'cheat'] = 1 
-#train_features += ['rd_skew'] #rd_std
-#train_features.remove('rd_std')
+
 w = train_full['target_id'].value_counts()
 weights = {i : np.sum(w) / w[i] for i in w.index}
 
-for i, (train_idx, cv_idx) in enumerate(folds):
-    X_train = train_full[train_features].iloc[train_idx]
-    Y_train = train_full['target_id'].iloc[train_idx]
-    X_cv = train_full[train_features].iloc[cv_idx]
-    Y_cv = train_full['target_id'].iloc[cv_idx]
-    print ("\n\n" + "-"*20 + "Fold " + str(i+1) + "-"*20)
-    
-    print ("\n" + "*"*10 + "LightGBM" + "*"*10)
-    clf_lgbm = lgbm.LGBMClassifier(**lgbm_params)
-    
-    clf_lgbm.fit(
-        X_train, Y_train,
-        eval_set=[(X_train, Y_train), (X_cv, Y_cv)],
-        verbose=100,
-        eval_metric=lgbMultiWeightedLoss,
-        early_stopping_rounds=50,
-        sample_weight=Y_train.map(weights)
-    )
-    
-    imp_df = pd.DataFrame()
-    imp_df['feature'] = train_features
-    imp_df['gain'] = clf_lgbm.booster_.feature_importance(importance_type='gain')
-    imp_df['fold'] = i + 1
-    imp_lgb = pd.concat([imp_lgb, imp_df], axis=0, sort=False)
-    
-    # since there is no class 15 in train set,
-    # the lightgbm will only predict 14 classes
-    oof_preds_lgbm[cv_idx, :14] \
-        = clf_lgbm.predict_proba(X_cv, num_iteration=clf_lgbm.best_iteration_)
+lgbm_list, oof_preds_lgbm, score =\
+    trainLGB(train_full, train_features, folds, lgbm_params, weights)
+rep = pd.DataFrame(columns=['F', 'Score'])
+rep.loc[0, :] = ['Orig', score]
 
-    lgbm_list.append(clf_lgbm)
-
-print("LightGBM: {0}".format(multiWeightedLoss(train_full['target_id'],
-                                               oof_preds_lgbm[:, :14],
-                                               no_class99=True)))
+#for i, f in enumerate(train_feats_orig):
+#    train_features = train_feats_orig.copy()
+#    train_features.remove(f)
+#    lgbm_list, oof_preds_lgbm, score =\
+#        trainLGB(train_full, train_features, folds, lgbm_params, weights)
+#    rep.loc[i+1, :] = [f, score]
+#    break
+    
 ############################
 from sklearn.metrics import confusion_matrix
 cnf_matrix_lgb = confusion_matrix(train_meta['target_id'],
