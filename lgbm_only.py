@@ -306,4 +306,6 @@ if do_prediction is True:
         
     preds_blend = pd.read_csv('output/nn_predictions_nn_scgal.csv')
     preds_blend[label_features] = 0.4*preds_blend[label_features] + 0.6*z[label_features]
+    
+    preds_blend.loc[preds_blend['object_id'].isin(gal_objs), 'class_99'] /= 10
     preds_blend.to_csv('output/blend.csv', index=False)
