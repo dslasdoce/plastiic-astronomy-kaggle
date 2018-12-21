@@ -17,7 +17,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from model_train import trainLGB
 plt.ioff()
-do_prediction = False
+do_prediction = True
 
 ########################### Data and Parameters Import ##########################
 target_map, label_features, all_classes, all_class_weights \
@@ -112,7 +112,7 @@ lgbm_params = {
 }
 
 lgbm_params = {
-    'boosting_type': 'gbdt',
+    'boosting_type': 'dart',
     'objective': 'multiclass',
     'num_class': 14,
     'metric': 'multi_logloss',
@@ -123,12 +123,13 @@ lgbm_params = {
     'reg_lambda': .1,
     'min_split_gain': 0.01,
     'min_child_weight': 10,
-    'n_estimators': 1000,
+    'n_estimators': 2000,
     'silent': -1,
     'verbose': -1,
     'max_depth': 3,
     'class_weight': {np.where(all_classes==int(cl.split('_')[1]))[0][0]: i\
-                     for (cl, i) in cl_weights_tmp.items()}
+                     for (cl, i) in cl_weights_tmp.items()},
+    'min_data_in_leaf': 50
 }
 
 #oof_preds_both = np.zeros((train_full.shape[0], 15))
@@ -180,61 +181,14 @@ label_features_exgal = ['class_' + str(cl) for cl in exgal_classes]
 
 ######################### #create submission file #############################
 if do_prediction is True:
-    import time
-    del train_full, train_idx, oof_preds_lgbm, train_meta
-    del X_cv, X_train, Y_cv, Y_train, preds
-    gc.collect()
-    start = time.time()
-    chunks = 3000000
-    chunk_last = pd.DataFrame()
-    test_row_num = 453653104 
-    total_steps = int(np.ceil(test_row_num/chunks))
-    #temporarily remove class 99 since it will predicted separately
+    chunks = 300000
     temp_label_features = label_features.copy()
     temp_label_features.remove("class_99")
-    #del train_full
-    for i_c, df in enumerate(pd.read_csv('/media/dslasdoce/Data/Astro/test_set.csv',
-                                         chunksize=chunks, iterator=True)):
-        #make sure object_ids do not get separated
+    for i_c, full_test in enumerate(pd.read_csv('input/full_test_saved_gb.csv', chunksize=chunks, iterator=True)):
         print("*"*20 + "chunk: " + str(i_c) + "*"*20)
-
-        df = pd.concat([chunk_last, df], ignore_index=True)
-        if i_c+1<total_steps:
-            #get the last object id
-            id_last = df['object_id'].values[-1] 
-            #get boolean indeces of rows with object_id == id_last
-            mask_last = (df['object_id']==id_last).values 
-            #get the rows with last object_id
-            chunk_last = df[mask_last] 
-            #remove the rows of the last object_id from the dataset
-            df = df[~mask_last]
         
-        
-        #if i_c <52:
-            #del mask_last, df
-            #continue
-        gc.collect()
-        full_test, train_features = dproc.getFullData(ts_data=df,
-                                                      meta_data=test_meta_data)
-        try:
-            del mask_last
-        except NameError:
-            pass
-        del df
-        
-        gc.collect()
-        full_test = full_test.fillna(train_mean)
-        
-        if i_c == 0:
-            full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved_gb.csv",
-                             index=False)
-        else: 
-            full_test.to_csv("/media/dslasdoce/Data/Astro/full_test_saved_gb.csv",
-                             index=False, header=False, mode='a')
-            
         # Make predictions
         print("Predicting...")
-        
         preds_lgb = None
         preds_xgb = None
         for clf_lgb in lgbm_list:
@@ -242,22 +196,21 @@ if do_prediction is True:
                 preds_lgb = clf_lgb.predict_proba(full_test[train_features],
                                           num_iteration=clf_lgb.best_iteration_)\
                             / len(folds)
+              
             else:
                 preds_lgb \
                     += clf_lgb.predict_proba(full_test[train_features],
                                              num_iteration=clf_lgb.best_iteration_)\
                         / len(folds)
-
-
         # Store predictions
         print("Saving predictions...")
          #create prediction file for each model
-#        for _pred, name in zip([preds_lgb, preds_xgb, preds_comb], ['lgb', 'xgb', 'comb']):
-        for _pred, name in zip([preds_lgb], ['lgb']):
+    #        for _pred, name in zip([preds_lgb, preds_xgb, preds_comb], ['lgb', 'xgb', 'comb']):
+        for _pred, name in zip([preds_lgb], ['final']):
             preds_df = pd.DataFrame(_pred, columns=[temp_label_features])
-            preds_df['object_id'] = full_test['object_id']
+            preds_df['object_id'] = full_test['object_id'].values
             preds_df['class_99'] = 0.1
-            
+    #            print(preds_df.iloc[0])
             if i_c == 0:
                 preds_df.to_csv('output/gb_predictions_{0}.csv'.format(name), index=False)
             else: 
@@ -266,14 +219,10 @@ if do_prediction is True:
             del preds_df
             gc.collect()
             
-        del preds_lgb, full_test
+        del preds_lgb
         gc.collect()
-        
-        if (i_c + 1) % 10 == 0:
-            print('%15d done in %5.1f' % (chunks * (i_c + 1), (time.time() - start) / 60))
-
 if do_prediction is True:
-    model = 'output/gb_predictions_lgb'
+    model = 'output/gb_predictions_final'
     z = pd.read_csv(model + '.csv')
     
     no_99 = label_features.copy()
@@ -301,9 +250,9 @@ if do_prediction is True:
     z.loc[z['object_id'].isin(gal_objs), label_features_exgal] = 0
     z.loc[z['object_id'].isin(exgal_objs), label_features_gal] = 0
     
-#    tech ='_scgal_new'
-#    z.to_csv(model + tech + '.csv', index=False)
+    tech ='_gb'
+    z.to_csv(model + tech + '.csv', index=False)
         
-    preds_blend = pd.read_csv('output/nn_predictions_nn_scgal.csv')
-    preds_blend[label_features] = 0.4*preds_blend[label_features] + 0.6*z[label_features]
-    preds_blend.to_csv('output/blend.csv', index=False)
+    preds_blend = pd.read_csv('output/blend_best.csv')
+    preds_blend[label_features] = 0.8*preds_blend[label_features] + 0.2*z[label_features]
+    preds_blend.to_csv('output/blend_final.csv', index=False)
