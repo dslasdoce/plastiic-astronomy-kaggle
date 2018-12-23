@@ -13,7 +13,7 @@ import dataproc as dproc
 from sklearn.preprocessing import OneHotEncoder
 
 do_prediction = False
-loaded_test = True
+loaded_test = False
 ########################### Data and Parameters Import ##########################
 target_map, label_features, all_classes, all_class_weights \
     = dproc.getDataParameters()
