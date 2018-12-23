@@ -239,7 +239,6 @@ fig.tight_layout()
 plt.tight_layout()
 plt.show(block=False)
 
-
 ######################### #create submission file #############################
 if loaded_test is True:
     chunks = 300000

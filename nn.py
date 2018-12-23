@@ -106,20 +106,6 @@ def build_model(dropout_rate=0.25,activation='relu'):
     model.add(Dense(len(all_classes), activation='softmax'))
     return model
 
-#y = train_full['target']
-#unique_y = np.unique(y)
-#class_map = dict()
-#for i,val in enumerate(unique_y):
-#    class_map[val] = i
-#y_map = np.zeros((y.shape[0],))
-#y_map = np.array([class_map[val] for val in y])
-#y_categorical = to_categorical(train_full['target_id'])
-#y_count = Counter(train_full['target_id'])
-#wtable = np.zeros((14,))
-#for i in range(14):
-#    wtable[i] = y_count[i]/train_full['target_id'].shape[0]
-
-#y = train_full['target']
 unique_y = all_classes#np.unique(y)
 class_map = dict()
 for i,val in enumerate(unique_y):

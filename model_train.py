@@ -170,7 +170,8 @@ def trainLGBXGB(train_full, train_features, folds, lgbm_params, xgb_params, weig
     print("XGBoost: {0}".format(multiWeightedLoss(train_full['target_id'],
                                                   oof_preds_xgb[:, :14])))
     
-    return lgbm_list, oof_preds_lgbm, xgb_list, oof_preds_xgb 
+    return lgbm_list, oof_preds_lgbm, xgb_list, oof_preds_xgb
+
 def trainLGB(train_full, train_features, folds, lgbm_params, weights):
     lgbm_list = []
     oof_preds_lgbm = np.zeros((train_full.shape[0], 15))
